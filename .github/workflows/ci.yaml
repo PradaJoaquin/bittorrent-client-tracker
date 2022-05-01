@@ -1,0 +1,41 @@
+name: CI
+
+# Specify when this workflow will run
+on:
+  push: # Run when pushing...
+    branches: [main] # to main branch.
+  pull_request: # Run when creating a Pull Request...
+    branches: [main] # against main branch.
+
+defaults:
+  run:
+    # This can be used to specify a custom
+    # working-directory to your root cargo project
+    #
+    # Example:
+    # working-directory: ./my-cargo-project
+    working-directory: ./
+
+env:
+  # Prettify cargo output
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run format check
+        run: cargo fmt --check
+      - name: Run check
+        run: cargo check --color always
+      - name: Run clippy
+        run: cargo clippy --color always -- -D warnings
+
+  test:
+    needs: [lint] # Run after lint has successfully passed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run tests
+        run: cargo test
