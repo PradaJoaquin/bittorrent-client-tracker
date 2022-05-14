@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Bencode {
     BNumber(i64),
     BString(Vec<u8>),
@@ -16,6 +16,40 @@ pub enum BencodeError {
     InvalidBencodeString,
     InvalidBencodeList,
     InvalidBencodeDict,
+}
+
+pub trait ToBencode {
+    fn to_bencode(&self) -> Bencode;
+}
+
+impl ToBencode for String {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BString(self.as_bytes().to_vec())
+    }
+}
+
+impl ToBencode for i64 {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BNumber(*self)
+    }
+}
+
+impl ToBencode for i32 {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BNumber((*self).into())
+    }
+}
+
+impl ToBencode for Vec<u8> {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BString(self.clone())
+    }
+}
+
+impl<T: ToBencode> ToBencode for Vec<T> {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BList(self.iter().map(|s| s.to_bencode()).collect())
+    }
 }
 
 impl Bencode {
@@ -118,6 +152,73 @@ impl Bencode {
             };
         }
         Ok((Bencode::BDict(dict), i + 1))
+    }
+
+    /// Encodes a Bencode enum into a bencoded vec of bytes.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use bit_torrent_rustico::encoder_decoder::bencode::Bencode;
+    ///
+    /// // String
+    /// let data = String::from("spam");
+    /// let encoded = Bencode::encode(&data);
+    ///
+    /// assert_eq!(encoded, b"4:spam");
+    ///
+    /// // Integer
+    /// let data = 123;
+    /// let encoded = Bencode::encode(&data);
+    ///
+    /// assert_eq!(encoded, b"i123e");
+    /// ```
+    pub fn encode(bencode: &dyn ToBencode) -> Vec<u8> {
+        let bencode = bencode.to_bencode();
+        Bencode::do_encode(bencode)
+    }
+
+    fn do_encode(bencode: Bencode) -> Vec<u8> {
+        match bencode {
+            Bencode::BNumber(n) => Bencode::encode_number(n),
+            Bencode::BString(s) => Bencode::encode_string(s),
+            Bencode::BList(l) => Bencode::encode_list(l),
+            Bencode::BDict(d) => Bencode::encode_dict(d),
+        }
+    }
+
+    fn encode_number(n: i64) -> Vec<u8> {
+        let mut encoded = vec![b'i'];
+        encoded.extend(n.to_string().into_bytes());
+        encoded.push(b'e');
+        encoded
+    }
+
+    fn encode_string(s: Vec<u8>) -> Vec<u8> {
+        let mut encoded = Vec::new();
+        encoded.extend(s.len().to_string().into_bytes());
+        encoded.push(b':');
+        encoded.extend(s);
+        encoded
+    }
+
+    fn encode_list(l: Vec<Bencode>) -> Vec<u8> {
+        let mut encoded = vec![b'l'];
+        for bencode in l {
+            encoded.extend(Bencode::do_encode(bencode));
+        }
+        encoded.push(b'e');
+        encoded
+    }
+
+    fn encode_dict(d: BTreeMap<Vec<u8>, Bencode>) -> Vec<u8> {
+        let mut encoded = vec![b'd'];
+        for (key, value) in d {
+            encoded.extend(Bencode::do_encode(Bencode::BString(key)));
+            encoded.extend(Bencode::do_encode(value));
+        }
+        encoded.push(b'e');
+        encoded
     }
 }
 
@@ -257,5 +358,59 @@ mod tests {
         dict.insert(b"foo".to_vec(), Bencode::BNumber(42));
 
         assert_eq!(Bencode::decode(data).unwrap(), Bencode::BDict(dict));
+    }
+
+    #[test]
+    fn test_encode_string() {
+        let data = String::from("spam");
+        assert_eq!(Bencode::encode(&data), b"4:spam");
+    }
+
+    #[test]
+    fn test_encode_empty_string() {
+        let data = String::from("");
+        assert_eq!(Bencode::encode(&data), b"0:");
+    }
+
+    #[test]
+    fn test_encode_positive_integer() {
+        let data = 3;
+        assert_eq!(Bencode::encode(&data), b"i3e");
+    }
+
+    #[test]
+    fn test_encode_negative_integer() {
+        let data = -3;
+        assert_eq!(Bencode::encode(&data), b"i-3e");
+    }
+
+    #[test]
+    fn test_encode_vec_of_bytes() {
+        let data = b"spam".to_vec();
+        assert_eq!(Bencode::encode(&data), b"4:spam");
+    }
+
+    #[test]
+    fn test_encode_vec_of_strings() {
+        let data = vec![String::from("spam"), String::from("eggs")];
+        assert_eq!(Bencode::encode(&data), b"l4:spam4:eggse");
+    }
+
+    #[test]
+    fn test_encode_vec_of_integers() {
+        let data = vec![1, 2, 3];
+        assert_eq!(Bencode::encode(&data), b"li1ei2ei3ee");
+    }
+
+    #[test]
+    fn test_encode_nested_list() {
+        let data = vec![vec![String::from("spam"), String::from("eggs")]];
+        assert_eq!(Bencode::encode(&data), b"ll4:spam4:eggsee");
+    }
+
+    #[test]
+    fn test_encode_empty_list() {
+        let data: Vec<String> = vec![];
+        assert_eq!(Bencode::encode(&data), b"le");
     }
 }

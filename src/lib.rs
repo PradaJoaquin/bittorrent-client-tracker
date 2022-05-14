@@ -4,3 +4,4 @@ pub mod graphic_interface;
 pub mod logger;
 pub mod server;
 pub mod storage_manager;
+pub mod torrent_parser;
