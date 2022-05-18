@@ -7,7 +7,7 @@ use crate::encoder_decoder::bencode::{Bencode, ToBencode};
 
 use super::info::Info;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Torrent {
     pub announce_url: String,
     pub info: Info,

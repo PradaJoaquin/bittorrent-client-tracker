@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::encoder_decoder::bencode::{Bencode, ToBencode};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Info {
     pub length: i64,
     pub name: String,
