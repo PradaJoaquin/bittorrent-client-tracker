@@ -46,6 +46,12 @@ impl ToBencode for Vec<u8> {
     }
 }
 
+impl ToBencode for BTreeMap<Vec<u8>, Bencode> {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BDict(self.clone())
+    }
+}
+
 impl<T: ToBencode> ToBencode for Vec<T> {
     fn to_bencode(&self) -> Bencode {
         Bencode::BList(self.iter().map(|s| s.to_bencode()).collect())

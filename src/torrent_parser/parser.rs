@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_parse_torrent() {
-        let filepath = "./test.torrent";
+        let filepath = "./test_parse_torrent.torrent";
         let contents =
             b"d8:announce35:https://torrent.ubuntu.com/announce4:infod6:lengthi3654957056e4:name30:ubuntu-22.04-desktop-amd64.iso12:piece lengthi262144e6:pieces64:<hex>BC 07 C0 6A 9D BC 07 C0 6A 9D BC 07 C0 6A 9D BC 07 C0 6A 9Dee";
         create_and_write_file(filepath, contents);
@@ -81,6 +81,7 @@ mod tests {
             torrent.info_hash,
             "48442ddee1900ed8c8101bb8b2bd955060f1eabc"
         );
+        remove_file(filepath);
     }
 
     fn create_and_write_file(path: &str, contents: &[u8]) {

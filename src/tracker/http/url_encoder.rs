@@ -1,20 +1,4 @@
-#[derive(PartialEq, Debug)]
-pub enum UrlEncoderError {
-    InvalidUrlEncode,
-}
-
 /// Takes an hex string and applies Percent-Encoding, returning an encoded version.
-///
-/// # Example
-///
-/// ```rust
-/// use bit_torrent_rustico::encoder_decoder::url_encoder::encode;
-///
-/// let hex_string = "2c6b6858d61da9543d4231a71db4b1c9264b0685";
-/// let encoded_hex_string = encode(hex_string);
-///
-/// assert_eq!(encoded_hex_string, "%2c%6b%68%58%d6%1d%a9%54%3d%42%31%a7%1d%b4%b1%c9%26%4b%06%85");
-/// ```
 pub fn encode(hex_string: &str) -> String {
     if hex_string.is_empty() {
         return hex_string.to_string();
