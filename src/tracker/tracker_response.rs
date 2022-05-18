@@ -1,6 +1,5 @@
-use super::bt_peer::FromBtPeerError;
 use crate::encoder_decoder::bencode::{Bencode, BencodeError};
-use crate::tracker::bt_peer::BtPeer;
+use crate::peer::bt_peer::{BtPeer, FromBtPeerError};
 
 /// `TrackerResponse` struct containing a tracker response.
 ///
