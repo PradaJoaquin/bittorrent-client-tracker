@@ -1,4 +1,14 @@
-use crate::encoder_decoder::bencode::Bencode;
+use std::{
+    io::{Read, Write},
+    net::TcpStream,
+};
+
+use crate::{
+    encoder_decoder::bencode::Bencode, peer::message::handshake::Handshake,
+    torrent_parser::torrent::Torrent,
+};
+
+const PEER_ID: &str = "LA_DEYMONETA_PAPA!!!";
 
 /// `BtPeer` struct containing individual BtPeer information.
 ///
@@ -81,6 +91,34 @@ impl BtPeer {
         };
 
         Ok(port)
+    }
+
+    pub fn handshake(&self, torrent: &Torrent) -> Vec<u8> {
+        let peer_socket = format!("{}:{}", self.ip, self.port)
+            .parse::<std::net::SocketAddr>()
+            .unwrap();
+
+        let info_hash = Self::decode_hex(torrent.info_hash.as_str());
+
+        let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
+
+        let mut stream = TcpStream::connect(&peer_socket).unwrap();
+        stream.write_all(&handshake.to_bytes()).unwrap();
+
+        let mut buffer = [0; 68];
+        match stream.read_exact(&mut buffer) {
+            Ok(_) => (),
+            Err(err) => println!("Error reading from stream: {}", err),
+        }
+        println!("Response: {:?}", buffer);
+        buffer.to_vec()
+    }
+
+    fn decode_hex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
     }
 }
 
