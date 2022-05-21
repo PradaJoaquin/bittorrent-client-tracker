@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::fmt::Write;
+use std::{collections::BTreeMap, num::ParseIntError};
 
 use sha1::{Digest, Sha1};
 
@@ -96,6 +96,18 @@ impl Torrent {
 
         Ok(hex_string)
     }
+
+    /// Returns the info hash of the torrent as a byte array.
+    pub fn get_info_hash_as_bytes(&self) -> Result<Vec<u8>, ParseIntError> {
+        Self::decode_hex(self.info_hash.as_str())
+    }
+
+    fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+            .collect()
+    }
 }
 
 impl ToBencode for Torrent {
@@ -184,6 +196,27 @@ mod tests {
         let expected_err = FromTorrentError::NotADict;
 
         assert_eq!(actual_err, expected_err);
+    }
+
+    #[test]
+    fn test_get_info_hash_as_bytes() {
+        let info_hash = String::from("2c6b6858d61da9543d4231a71db4b1c9264b0685");
+        let info_hash_bytes = [
+            44, 107, 104, 88, 214, 29, 169, 84, 61, 66, 49, 167, 29, 180, 177, 201, 38, 75, 6, 133,
+        ];
+
+        let torrent = Torrent {
+            announce_url: String::from("http://example.com/announce"),
+            info: Info {
+                length: 10,
+                name: String::from("example"),
+                piece_length: 20,
+                pieces: String::from("test").into_bytes(),
+            },
+            info_hash,
+        };
+
+        assert_eq!(torrent.get_info_hash_as_bytes().unwrap(), info_hash_bytes);
     }
 
     fn build_info_bencode(
