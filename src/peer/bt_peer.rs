@@ -4,12 +4,15 @@ use std::{
     num::ParseIntError,
 };
 
+use sha1::{Digest, Sha1};
+
 use crate::{
-    encoder_decoder::bencode::Bencode, peer::message::handshake::Handshake,
+    encoder_decoder::bencode::Bencode,
+    peer::message::{handshake::Handshake, message::Message},
     torrent_parser::torrent::Torrent,
 };
 
-use super::message::handshake::FromHandshakeError;
+use super::message::{handshake::FromHandshakeError, message::MessageId};
 
 const PEER_ID: &str = "LA_DEYMONETA_PAPA!!!";
 
@@ -21,7 +24,34 @@ pub struct BtPeer {
     pub peer_id: Vec<u8>,
     pub ip: String,
     pub port: i64,
+    pub piece: Vec<u8>,
 }
+
+struct Request {
+    index: u32,
+    begin: u32,
+    length: u32,
+}
+
+impl Request {
+    fn new(index: u32, begin: u32, length: u32) -> Self {
+        Self {
+            index,
+            begin,
+            length,
+        }
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![0; 12];
+        bytes[0..4].copy_from_slice(&self.index.to_be_bytes());
+        bytes[4..8].copy_from_slice(&self.begin.to_be_bytes());
+        bytes[8..12].copy_from_slice(&self.length.to_be_bytes());
+        bytes
+    }
+}
+
+const BLOCK_SIZE: u32 = 16384;
 
 /// Posible `BtPeer` errors
 #[derive(Debug)]
@@ -68,7 +98,12 @@ impl BtPeer {
             }
         }
 
-        Ok(BtPeer { peer_id, ip, port })
+        Ok(BtPeer {
+            peer_id,
+            ip,
+            port,
+            piece: vec![],
+        })
     }
 
     fn create_peer_id(bencode: &Bencode) -> Result<Vec<u8>, FromBtPeerError> {
@@ -103,7 +138,7 @@ impl BtPeer {
         Ok(port)
     }
 
-    pub fn handshake(&self, torrent: &Torrent) -> Result<Handshake, BtPeerError> {
+    pub fn handshake(&mut self, torrent: &Torrent) -> Result<Handshake, BtPeerError> {
         let peer_socket = format!("{}:{}", self.ip, self.port)
             .parse::<std::net::SocketAddr>()
             .unwrap();
@@ -120,8 +155,85 @@ impl BtPeer {
             Ok(_) => (),
             Err(err) => println!("Error reading from stream: {}", err),
         }
+        let handshake = Handshake::from_bytes(&buffer).map_err(BtPeerError::FromHandshakeError)?;
+        println!("Received handshake: {:?}", handshake);
 
-        Handshake::from_bytes(&buffer).map_err(BtPeerError::FromHandshakeError)
+        let mut length = [0; 4];
+        let mut msg_type = [0; 1];
+
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+
+        let requests_to_do = torrent.info.piece_length as u32 / BLOCK_SIZE;
+        let mut count = 0;
+
+        loop {
+            stream.read_exact(&mut length).unwrap();
+            let len = u32::from_be_bytes(length);
+            println!("Received message length: {:?}", len);
+
+            stream.read_exact(&mut msg_type).unwrap();
+            println!("Message type: {:?}", msg_type);
+
+            let mut payload = vec![0; (len - 1) as usize];
+            if len > 1 {
+                stream.read_exact(&mut payload).unwrap();
+            }
+            println!("Payload: {:?}", payload);
+            println!();
+
+            let message = Message::from_bytes(&msg_type, &payload).unwrap();
+            self.handle_message(message, &stream);
+
+            if count < requests_to_do {
+                Self::request_piece(0, count * BLOCK_SIZE, BLOCK_SIZE, &stream);
+            } else {
+                println!("All pieces requested");
+                println!("piece: {:?}", self.piece);
+
+                let hash = Sha1::digest(&self.piece);
+
+                println!("hash: {:?}", hash);
+            }
+            count += 1;
+        }
+    }
+
+    fn handle_message(&mut self, message: Message, stream: &TcpStream) {
+        match message.id {
+            MessageId::Unchoke => {
+                println!("Received unchoke");
+
+                // Now we can start requesting pieces
+                let index = 0;
+                let begin = 0;
+                let length = 16384;
+                Self::request_piece(index, begin, length, stream);
+            }
+
+            MessageId::Bitfield => Self::handle_bitfield(message),
+            MessageId::Piece => self.handle_piece(message),
+            _ => unimplemented!(),
+        }
+    }
+
+    fn request_piece(index: u32, begin: u32, length: u32, mut stream: &TcpStream) {
+        let payload = Request::new(index, begin, length).to_bytes();
+
+        let request_msg = Message::new(MessageId::Request, payload);
+        stream.write_all(&request_msg.to_bytes()).unwrap();
+    }
+
+    fn handle_bitfield(message: Message) {
+        let bitfield = message.payload;
+
+        println!("Received bitfield: {:?}", bitfield);
+    }
+
+    fn handle_piece(&mut self, mut message: Message) {
+        // println!("Received piece: {:?}", message.payload);
+        self.piece.append(&mut message.payload);
     }
 }
 
