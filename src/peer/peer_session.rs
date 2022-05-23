@@ -70,11 +70,20 @@ impl PeerSession {
             .parse::<std::net::SocketAddr>()
             .unwrap();
 
-        let info_hash = self.torrent.get_info_hash_as_bytes().unwrap();
-
-        let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
-
         let mut stream = TcpStream::connect(&peer_socket).unwrap();
+
+        let handshake = self.send_handshake(&mut stream)?;
+        println!("Received handshake: {:?}", handshake);
+
+        let piece_index = 0;
+        self.download_piece(stream, piece_index);
+
+        Ok(())
+    }
+
+    fn send_handshake(&mut self, stream: &mut TcpStream) -> Result<Handshake, PeerSessionError> {
+        let info_hash = self.torrent.get_info_hash_as_bytes().unwrap();
+        let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
         stream.write_all(&handshake.to_bytes()).unwrap();
 
         let mut buffer = [0; 68];
@@ -82,13 +91,8 @@ impl PeerSession {
             Ok(_) => (),
             Err(err) => println!("Error reading from stream: {}", err),
         }
-        let handshake = Handshake::from_bytes(&buffer).map_err(PeerSessionError::HandshakeError)?;
-        println!("Received handshake: {:?}", handshake);
 
-        let piece_index = 0;
-        self.download_piece(stream, piece_index);
-
-        Ok(())
+        Handshake::from_bytes(&buffer).map_err(PeerSessionError::HandshakeError)
     }
 
     fn download_piece(&mut self, mut stream: TcpStream, piece_index: u32) {
