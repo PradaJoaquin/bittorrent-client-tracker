@@ -67,8 +67,10 @@ impl Logger {
                 let formated =
                     format!("{} {}\n", time.format("[%Y/%m/%d %H:%M:%S]"), msg).into_bytes();
 
-                // Al estar dentro de otro thread no creo que se pueda manejar el error burbujeandolo.
-                file.write_all(&formated).unwrap();
+                match file.write_all(&formated) {
+                    Ok(_) => {}
+                    Err(err) => eprintln!("Error({err}) writing to the log"),
+                }
             }
         });
         match result {
