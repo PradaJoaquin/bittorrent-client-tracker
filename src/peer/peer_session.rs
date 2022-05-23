@@ -75,10 +75,70 @@ impl PeerSession {
         let handshake = self.send_handshake(&mut stream)?;
         println!("Received handshake: {:?}", handshake);
 
-        let piece_index = 0;
-        self.download_piece(stream, piece_index);
+        let total_pieces = (self.torrent.info.length / self.torrent.info.piece_length) as u32;
+
+        loop {
+            self.read_message_from_stream(&mut stream);
+
+            if self.status.choked && !self.status.interested {
+                self.send_interested(&mut stream);
+            }
+
+            if !self.status.choked && self.status.interested {
+                println!("Requesting pieces...");
+                for piece_index in 0..total_pieces {
+                    let has_piece = self.bitfield.has_piece(piece_index);
+                    println!("Has piece {}: {:?}", piece_index, has_piece);
+
+                    if has_piece {
+                        println!("\n\n********* Downloading piece {}...", piece_index);
+                        self.download_piece(&mut stream, piece_index);
+                    }
+                }
+                println!("\n\n********* Download complete!");
+                break;
+            }
+        }
 
         Ok(())
+    }
+
+    fn download_piece(&mut self, stream: &mut TcpStream, piece_index: u32) {
+        let total_blocks_in_piece = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
+        println!(
+            "Total blocks for piece {}: {}",
+            piece_index, total_blocks_in_piece
+        );
+
+        for block in 0..total_blocks_in_piece {
+            println!("Sending request: {}/{}", block, total_blocks_in_piece);
+            self.request_piece(piece_index, block * BLOCK_SIZE, BLOCK_SIZE, stream);
+            self.read_message_from_stream(stream);
+        }
+
+        self.validate_piece(&self.piece, piece_index);
+        println!("Piece {} downloaded!", piece_index);
+
+        self.piece = vec![]; // reset piece
+    }
+
+    fn read_message_from_stream(&mut self, stream: &mut TcpStream) {
+        let mut length = [0; 4];
+        let mut msg_type = [0; 1];
+
+        stream.read_exact(&mut length).unwrap();
+        let len = u32::from_be_bytes(length);
+
+        stream.read_exact(&mut msg_type).unwrap();
+
+        let mut payload = vec![0; (len - 1) as usize];
+        if len > 1 {
+            stream.read_exact(&mut payload).unwrap();
+        }
+        println!();
+
+        let message = Message::from_bytes(&msg_type, &payload).unwrap();
+        self.handle_message(message);
     }
 
     fn send_handshake(&mut self, stream: &mut TcpStream) -> Result<Handshake, PeerSessionError> {
@@ -93,54 +153,6 @@ impl PeerSession {
         }
 
         Handshake::from_bytes(&buffer).map_err(PeerSessionError::HandshakeError)
-    }
-
-    fn download_piece(&mut self, mut stream: TcpStream, piece_index: u32) {
-        stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
-            .unwrap();
-
-        let mut length = [0; 4];
-        let mut msg_type = [0; 1];
-
-        let requests_to_do = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
-        let mut count = 0;
-        loop {
-            stream.read_exact(&mut length).unwrap();
-            let len = u32::from_be_bytes(length);
-            println!("Received message length: {:?}", len);
-
-            stream.read_exact(&mut msg_type).unwrap();
-            println!("Message type: {:?}", msg_type);
-
-            let mut payload = vec![0; (len - 1) as usize];
-            if len > 1 {
-                stream.read_exact(&mut payload).unwrap();
-            }
-            println!();
-
-            let message = Message::from_bytes(&msg_type, &payload).unwrap();
-            self.handle_message(message);
-
-            let has_piece = self.bitfield.has_piece(piece_index);
-            println!("Has piece: {:?}", has_piece);
-            println!("Requests to do: {:?}", requests_to_do);
-
-            if !self.status.interested {
-                self.send_interested(&mut stream);
-            }
-
-            if !self.status.choked && count < requests_to_do {
-                if has_piece {
-                    println!("Sending request: {:?}", count);
-                    self.request_piece(piece_index, count * BLOCK_SIZE, BLOCK_SIZE, &stream);
-                    count += 1;
-                }
-            } else if count >= requests_to_do {
-                println!("Piece {} downloaded!", piece_index);
-                self.validate_piece(&self.piece, piece_index);
-            }
-        }
     }
 
     fn handle_message(&mut self, message: Message) {
@@ -187,6 +199,7 @@ impl PeerSession {
     }
 
     fn validate_piece(&self, piece: &[u8], piece_index: u32) {
+        println!("\nValidating piece {}...", piece_index);
         let start = (piece_index * 20) as usize;
         let end = start + 20;
 
@@ -200,9 +213,9 @@ impl PeerSession {
         println!("Downloaded piece hash: {:?}", res_piece_hash);
 
         if real_piece_hash == res_piece_hash {
-            println!("Piece {} hash matches!", piece_index);
+            println!("Piece {} hash matches!\n\n", piece_index);
         } else {
-            println!("Piece {} hash does not match!", piece_index);
+            panic!("Piece {} hash does not match!", piece_index);
         }
     }
 
