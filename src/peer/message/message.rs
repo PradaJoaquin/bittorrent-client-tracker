@@ -8,8 +8,8 @@ impl Bitfield {
         Bitfield { bitfield }
     }
 
-    pub fn has_piece(&self, index: usize) -> bool {
-        let byte = self.bitfield[index / 8];
+    pub fn has_piece(&self, index: u32) -> bool {
+        let byte = self.bitfield[index as usize / 8];
         let bit = byte & (1 << (index % 8));
         bit != 0
     }

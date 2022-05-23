@@ -85,16 +85,22 @@ impl PeerSession {
         let handshake = Handshake::from_bytes(&buffer).map_err(PeerSessionError::HandshakeError)?;
         println!("Received handshake: {:?}", handshake);
 
+        let piece_index = 0;
+        self.download_piece(stream, piece_index);
+
+        Ok(())
+    }
+
+    fn download_piece(&mut self, mut stream: TcpStream, piece_index: u32) {
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .unwrap();
+
         let mut length = [0; 4];
         let mut msg_type = [0; 1];
 
-        stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
-            .unwrap();
-
         let requests_to_do = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
         let mut count = 0;
-
         loop {
             stream.read_exact(&mut length).unwrap();
             let len = u32::from_be_bytes(length);
@@ -112,7 +118,7 @@ impl PeerSession {
             let message = Message::from_bytes(&msg_type, &payload).unwrap();
             self.handle_message(message);
 
-            let has_piece = self.bitfield.has_piece(0);
+            let has_piece = self.bitfield.has_piece(piece_index);
             println!("Has piece: {:?}", has_piece);
             println!("Requests to do: {:?}", requests_to_do);
 
@@ -123,11 +129,12 @@ impl PeerSession {
             if !self.status.choked && count < requests_to_do {
                 if has_piece {
                     println!("Sending request: {:?}", count);
-                    self.request_piece(0, count * BLOCK_SIZE, BLOCK_SIZE, &stream);
+                    self.request_piece(piece_index, count * BLOCK_SIZE, BLOCK_SIZE, &stream);
                     count += 1;
                 }
             } else if count >= requests_to_do {
-                self.validate_piece(&self.piece);
+                println!("Piece {} downloaded!", piece_index);
+                self.validate_piece(&self.piece, piece_index);
             }
         }
     }
@@ -175,32 +182,31 @@ impl PeerSession {
         self.piece.append(&mut block.to_vec());
     }
 
-    fn validate_piece(&self, piece: &[u8]) {
-        println!("Piece 0 downloaded!");
+    fn validate_piece(&self, piece: &[u8], piece_index: u32) {
+        let start = (piece_index * 20) as usize;
+        let end = start + 20;
 
-        let hash = &self.torrent.info.pieces[0..20];
-
-        let mut real_piece_hash = String::with_capacity(hash.len() * 2);
-
-        for b in hash {
-            write!(&mut real_piece_hash, "{:02x}", b).unwrap();
-        }
+        let real_hash = &self.torrent.info.pieces[start..end];
+        let real_piece_hash = self.convert_to_hex_string(real_hash);
 
         let hash = Sha1::digest(piece);
-
-        let mut res_piece_hash = String::with_capacity(hash.len() * 2);
-
-        for b in hash {
-            write!(&mut res_piece_hash, "{:02x}", b).unwrap();
-        }
+        let res_piece_hash = self.convert_to_hex_string(hash.as_slice());
 
         println!("Real piece hash: {:?}", real_piece_hash);
         println!("Downloaded piece hash: {:?}", res_piece_hash);
 
         if real_piece_hash == res_piece_hash {
-            println!("Piece 0 hash matches!");
+            println!("Piece {} hash matches!", piece_index);
         } else {
-            println!("Piece 0 hash does not match!");
+            println!("Piece {} hash does not match!", piece_index);
         }
+    }
+
+    fn convert_to_hex_string(&self, bytes: &[u8]) -> String {
+        let mut res = String::with_capacity(bytes.len() * 2);
+        for b in bytes {
+            write!(&mut res, "{:02x}", b).unwrap();
+        }
+        res
     }
 }
