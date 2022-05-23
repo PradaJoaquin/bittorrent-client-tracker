@@ -1,3 +1,45 @@
+#[derive(Debug)]
+pub struct Bitfield {
+    bitfield: Vec<u8>,
+}
+
+impl Bitfield {
+    pub fn new(bitfield: Vec<u8>) -> Bitfield {
+        Bitfield { bitfield }
+    }
+
+    pub fn has_piece(&self, index: usize) -> bool {
+        let byte = self.bitfield[index / 8];
+        let bit = byte & (1 << (index % 8));
+        bit != 0
+    }
+}
+
+#[derive(Debug)]
+pub struct Request {
+    index: u32,
+    begin: u32,
+    length: u32,
+}
+
+impl Request {
+    pub fn new(index: u32, begin: u32, length: u32) -> Self {
+        Self {
+            index,
+            begin,
+            length,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = vec![0; 12];
+        bytes[0..4].copy_from_slice(&self.index.to_be_bytes());
+        bytes[4..8].copy_from_slice(&self.begin.to_be_bytes());
+        bytes[8..12].copy_from_slice(&self.length.to_be_bytes());
+        bytes
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum MessageId {
     Choke = 0,
@@ -51,7 +93,6 @@ impl Message {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let len = self.payload.len() + 1;
-        println!("*** message len: {}", len);
         let len_bytes: [u8; 4] = (len as u32).to_be_bytes();
         let mut bytes = vec![0; 4 + len];
         bytes[0..4].copy_from_slice(&len_bytes);
