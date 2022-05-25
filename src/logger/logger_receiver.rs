@@ -27,11 +27,11 @@ use chrono::prelude::*;
 /// let logger = Logger::new(".").unwrap();
 /// let logger_sender = logger.new_sender();
 ///
-/// thread::spawn(move || logger_sender.send("log_test").unwrap());
+/// thread::spawn(move || logger_sender.info("log_test").unwrap());
 /// ```
 #[derive(Debug)]
 pub struct Logger {
-    sender: Sender<String>,
+    sender: LoggerSender,
 }
 
 impl Logger {
@@ -48,12 +48,14 @@ impl Logger {
         let file = Self::create_log_file(dir_path)?;
         Self::spawn_log_receiver(receiver, file)?;
 
-        Ok(Self { sender })
+        Ok(Self {
+            sender: LoggerSender::new(sender),
+        })
     }
 
     /// Creates a new LoggerSender for the current Logger
     pub fn new_sender(&self) -> LoggerSender {
-        LoggerSender::new(self.sender.clone())
+        self.sender.clone()
     }
 
     fn spawn_log_receiver(receiver: Receiver<String>, file: File) -> Result<(), LoggerError> {
@@ -87,7 +89,7 @@ impl Logger {
             .write(true)
             .append(true)
             .open(format!(
-                "{}/{}.txt",
+                "{}/{}.log",
                 dir_path,
                 time.format("%Y-%m-%d_%H-%M-%S")
             ));
@@ -110,27 +112,33 @@ mod tests {
     #[test]
     fn test_good_log() {
         let path = "./test_good_log";
-        let loggin = "log_test";
-        fs::create_dir(path).unwrap();
+        let loggin = "log_test".to_string();
+        let log_type = "info".to_string();
+        create_log_and_assert_loggin(path, loggin, log_type);
+    }
 
-        let logger = Logger::new(path).unwrap();
-        let logger_sender = logger.new_sender();
+    #[test]
+    fn test_info_log() {
+        let path = "./test_info_log";
+        let loggin = "[INFO]";
+        let log_type = "info".to_string();
+        create_log_and_assert_loggin(path, loggin.to_string(), log_type);
+    }
 
-        thread::spawn(move || logger_sender.send(loggin).unwrap());
+    #[test]
+    fn test_warn_log() {
+        let path = "./test_warn_log";
+        let loggin = "[WARN]";
+        let log_type = "warn".to_string();
+        create_log_and_assert_loggin(path, loggin.to_string(), log_type);
+    }
 
-        let paths = fs::read_dir(path).unwrap();
-        for log_path in paths {
-            let log = File::open(log_path.unwrap().path()).unwrap();
-            let reader = BufReader::new(log);
-
-            for line in reader.lines() {
-                let current_line = line.unwrap();
-
-                assert!(current_line.contains(loggin));
-            }
-        }
-
-        fs::remove_dir_all(path).unwrap();
+    #[test]
+    fn test_error_log() {
+        let path = "./test_error_log";
+        let loggin = "[ERROR]";
+        let log_type = "error".to_string();
+        create_log_and_assert_loggin(path, loggin.to_string(), log_type);
     }
 
     #[test]
@@ -154,11 +162,11 @@ mod tests {
         let logger_sender_2 = logger.new_sender();
         let logger_sender_3 = logger.new_sender();
 
-        thread::spawn(move || logger_sender_1.send(loggin[0]).unwrap());
+        thread::spawn(move || logger_sender_1.info(loggin[0]).unwrap());
         sleep(Duration::from_millis(100));
-        thread::spawn(move || logger_sender_2.send(loggin[1]).unwrap());
+        thread::spawn(move || logger_sender_2.info(loggin[1]).unwrap());
         sleep(Duration::from_millis(100));
-        thread::spawn(move || logger_sender_3.send(loggin[2]).unwrap());
+        thread::spawn(move || logger_sender_3.info(loggin[2]).unwrap());
 
         let paths = fs::read_dir(path).unwrap();
         for log_path in paths {
@@ -187,9 +195,9 @@ mod tests {
 
         let logger_sender = logger.new_sender();
 
-        logger_sender.send(loggin[0]).unwrap();
-        logger_sender.send(loggin[1]).unwrap();
-        logger_sender.send(loggin[2]).unwrap();
+        logger_sender.info(loggin[0]).unwrap();
+        logger_sender.info(loggin[1]).unwrap();
+        logger_sender.info(loggin[2]).unwrap();
 
         let paths = fs::read_dir(path).unwrap();
         for log_path in paths {
@@ -202,6 +210,38 @@ mod tests {
 
                 assert!(current_line.contains(loggin[counter]));
                 counter += 1;
+            }
+        }
+
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    // Auxiliary functions
+
+    fn create_log_and_assert_loggin(path: &str, loggin: String, log_type: String) {
+        fs::create_dir(path).unwrap();
+
+        let logger = Logger::new(path).unwrap();
+        let logger_sender = logger.new_sender();
+
+        let loggin_assert = loggin.clone();
+
+        thread::spawn(move || match log_type.as_str() {
+            "info" => logger_sender.info(loggin.as_str()).unwrap(),
+            "warn" => logger_sender.warn(loggin.as_str()).unwrap(),
+            "error" => logger_sender.error(loggin.as_str()).unwrap(),
+            _ => panic!("Unknown log type"),
+        });
+
+        let paths = fs::read_dir(path).unwrap();
+        for log_path in paths {
+            let log = File::open(log_path.unwrap().path()).unwrap();
+            let reader = BufReader::new(log);
+
+            for line in reader.lines() {
+                let current_line = line.unwrap();
+
+                assert!(current_line.contains(loggin_assert.as_str()));
             }
         }
 

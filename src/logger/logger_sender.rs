@@ -1,8 +1,16 @@
 use super::logger_error::LoggerError;
 use std::sync::mpsc::Sender;
+use std::thread;
 
 /// A LoggerSender representing the sender channel connected to a Logger
-#[derive(Debug)]
+///
+/// There are three ways to write to the log:
+///  - `info()` to log information.
+///  - `warn()` to log a non critical warning.
+///  - `error()` to log a critical error.
+///
+/// To clone the LoggerSender simply call the `clone()` method.
+#[derive(Debug, Clone)]
 pub struct LoggerSender {
     sender_clone: Sender<String>,
 }
@@ -13,14 +21,45 @@ impl LoggerSender {
         Self { sender_clone }
     }
 
-    /// Sends the information to write to the log connected to the LoggerSender.
+    /// Writes an Info type log to the connected logger
     ///
     /// It returns an error if:
     /// - Couldn't send the information to the receiver
-    pub fn send(&self, value: &str) -> Result<(), LoggerError> {
+    pub fn info(&self, value: &str) -> Result<(), LoggerError> {
+        let formated_value = format!("[{}] [INFO] - {}", self.get_thread_name(), value);
+        self.send(formated_value)
+    }
+
+    /// Writes a Warn type log to the connected logger
+    ///
+    /// It returns an error if:
+    /// - Couldn't send the information to the receiver
+    pub fn warn(&self, value: &str) -> Result<(), LoggerError> {
+        let formated_value = format!("[{}] [WARN] - {}", self.get_thread_name(), value);
+        self.send(formated_value)
+    }
+
+    /// Writes an Error type log to the connected logger
+    ///
+    /// It returns an error if:
+    /// - Couldn't send the information to the receiver
+    pub fn error(&self, value: &str) -> Result<(), LoggerError> {
+        let formated_value = format!("[{}] [ERROR] - {}", self.get_thread_name(), value);
+        self.send(formated_value)
+    }
+
+    fn send(&self, value: String) -> Result<(), LoggerError> {
         match self.sender_clone.send(value.to_string()) {
             Ok(_) => Ok(()),
-            Err(_) => Err(LoggerError::SendError(value.to_string())),
+            Err(_) => Err(LoggerError::SendError(value)),
+        }
+    }
+
+    fn get_thread_name(&self) -> String {
+        let current_thread = thread::current();
+        match current_thread.name() {
+            Some(name) => name.to_string(),
+            None => "unnamed-thread".to_string(),
         }
     }
 }
