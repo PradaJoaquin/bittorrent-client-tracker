@@ -26,13 +26,13 @@ pub enum PeerSessionError {
 }
 
 #[derive(Debug)]
-pub struct PeerStatus {
+struct PeerStatus {
     choked: bool,
     interested: bool,
 }
 
 impl PeerStatus {
-    pub fn new() -> PeerStatus {
+    fn new() -> PeerStatus {
         PeerStatus {
             choked: true,
             interested: false,
@@ -46,6 +46,9 @@ impl Default for PeerStatus {
     }
 }
 
+/// A PeerSession represents a connection to a peer.
+///
+/// It is used to send and receive messages from a peer.
 pub struct PeerSession {
     torrent: Torrent,
     peer: BtPeer,
@@ -65,6 +68,10 @@ impl PeerSession {
         }
     }
 
+    /// Starts a connection to the peer.
+    /// It returns an error if:
+    /// - The connection could not be established
+    /// - The handshake was not successful
     pub fn start(&mut self) -> Result<(), PeerSessionError> {
         let peer_socket = format!("{}:{}", self.peer.ip, self.peer.port)
             .parse::<std::net::SocketAddr>()
@@ -103,6 +110,7 @@ impl PeerSession {
         Ok(())
     }
 
+    /// Downloads a piece from the peer given the piece index.
     fn download_piece(&mut self, stream: &mut TcpStream, piece_index: u32) {
         let total_blocks_in_piece = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
         println!(
@@ -141,6 +149,9 @@ impl PeerSession {
         self.handle_message(message);
     }
 
+    /// Sends a handshake to the peer and returns the handshake received from the peer.
+    ///
+    /// It returns an error if the handshake could not be sent or the handshake was not successful.
     fn send_handshake(&mut self, stream: &mut TcpStream) -> Result<Handshake, PeerSessionError> {
         let info_hash = self.torrent.get_info_hash_as_bytes().unwrap();
         let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
@@ -198,6 +209,9 @@ impl PeerSession {
         self.piece.append(&mut block.to_vec());
     }
 
+    /// Validates the downloaded piece.
+    ///
+    /// Checks the piece hash and compares it to the hash in the torrent file.
     fn validate_piece(&self, piece: &[u8], piece_index: u32) {
         println!("\nValidating piece {}...", piece_index);
         let start = (piece_index * 20) as usize;

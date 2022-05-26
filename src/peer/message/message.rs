@@ -1,3 +1,6 @@
+/// Represents a Bitfield.
+///
+/// It contains information about the pieces that the peer has.
 #[derive(Debug)]
 pub struct Bitfield {
     bitfield: Vec<u8>,
@@ -8,6 +11,7 @@ impl Bitfield {
         Bitfield { bitfield }
     }
 
+    /// Returns whether the peer has the piece with the given index.
     pub fn has_piece(&self, index: u32) -> bool {
         let byte = self.bitfield[index as usize / 8];
         let bit = byte & (1 << (index % 8));
@@ -15,6 +19,7 @@ impl Bitfield {
     }
 }
 
+/// Represents the payload of a Request message.
 #[derive(Debug)]
 pub struct Request {
     index: u32,
@@ -40,6 +45,7 @@ impl Request {
     }
 }
 
+// IDs of the messages defined in the protocol.
 #[derive(Debug, Clone)]
 pub enum MessageId {
     Choke = 0,
@@ -54,6 +60,9 @@ pub enum MessageId {
     Port = 9,
 }
 
+/// The message that is sent to the peer.
+///
+/// It contains the message ID and the payload.
 #[derive(Debug)]
 pub struct Message {
     pub id: MessageId,
