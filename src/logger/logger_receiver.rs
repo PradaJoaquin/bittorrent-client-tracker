@@ -17,18 +17,6 @@ use chrono::prelude::*;
 /// and as many channels to send it. It can be used with multiple threads at the same time.
 ///
 /// To clone the sender's channel it has a new_sender() method which returns a LoggerSender struct.
-///
-/// # Example
-///
-/// ```rust
-/// use bit_torrent_rustico::logger::logger_receiver::Logger;
-/// use std::thread;
-///
-/// let logger = Logger::new(".").unwrap();
-/// let logger_sender = logger.new_sender();
-///
-/// thread::spawn(move || logger_sender.info("log_test").unwrap());
-/// ```
 #[derive(Debug)]
 pub struct Logger {
     sender: LoggerSender,
