@@ -84,6 +84,9 @@ impl Bencode {
     }
 
     fn do_decode(data: &[u8]) -> Result<(Bencode, usize), BencodeError> {
+        if data.is_empty() {
+            return Err(BencodeError::InvalidBencode);
+        };
         match data[0] {
             b'i' => Bencode::decode_number(data),
             b'l' => Bencode::decode_list(data),
@@ -231,6 +234,12 @@ impl Bencode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_decode_empty_data() {
+        let data: &[u8; 0] = &[];
+        assert_eq!(Bencode::decode(data), Err(BencodeError::InvalidBencode));
+    }
 
     #[test]
     fn test_decode_string() {
