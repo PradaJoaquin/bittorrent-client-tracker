@@ -6,14 +6,12 @@ use std::{
 
 use sha1::{Digest, Sha1};
 
-use crate::{
-    peer::message::{handshake::Handshake, message::Message},
-    torrent_parser::torrent::Torrent,
-};
+use crate::torrent_parser::torrent::Torrent;
 
 use super::bt_peer::BtPeer;
-use super::message::handshake::FromHandshakeError;
-use super::message::message::{Bitfield, MessageId, Request};
+use super::message::handshake::{FromHandshakeError, Handshake};
+use super::message::message::{Bitfield, Message, MessageId, Request};
+use super::peer_status::PeerStatus;
 
 const PEER_ID: &str = "LA_DEYMONETA_PAPA!!!";
 const BLOCK_SIZE: u32 = 16384;
@@ -23,27 +21,6 @@ pub enum PeerSessionError {
     HandshakeError(FromHandshakeError),
     MessageError(MessageId),
     RequestError(Request),
-}
-
-#[derive(Debug)]
-struct PeerStatus {
-    choked: bool,
-    interested: bool,
-}
-
-impl PeerStatus {
-    fn new() -> PeerStatus {
-        PeerStatus {
-            choked: true,
-            interested: false,
-        }
-    }
-}
-
-impl Default for PeerStatus {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// A PeerSession represents a connection to a peer.
@@ -63,12 +40,13 @@ impl PeerSession {
             torrent,
             peer,
             bitfield: Bitfield::new(vec![]),
-            status: PeerStatus::new(),
+            status: PeerStatus::default(),
             piece: vec![],
         }
     }
 
     /// Starts a connection to the peer.
+    ///
     /// It returns an error if:
     /// - The connection could not be established
     /// - The handshake was not successful
