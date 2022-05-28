@@ -1,4 +1,5 @@
 use std::fmt::Write;
+use std::io;
 use std::{
     io::{Read, Write as IOWrite},
     net::TcpStream,
@@ -9,8 +10,8 @@ use sha1::{Digest, Sha1};
 use crate::torrent_parser::torrent::Torrent;
 
 use super::bt_peer::BtPeer;
-use super::message::handshake::{FromHandshakeError, Handshake};
-use super::message::message::{Bitfield, Message, MessageId, Request};
+use super::message::handshake::Handshake;
+use super::message::message::{Bitfield, FromMessageError, Message, MessageId, Request};
 use super::peer_status::PeerStatus;
 
 const PEER_ID: &str = "LA_DEYMONETA_PAPA!!!";
@@ -18,9 +19,12 @@ const BLOCK_SIZE: u32 = 16384;
 
 #[derive(Debug)]
 pub enum PeerSessionError {
-    HandshakeError(FromHandshakeError),
+    HandshakeError,
     MessageError(MessageId),
     RequestError(Request),
+    ErrorReadingMessage(io::Error),
+    FromMessageError(FromMessageError),
+    CouldNotConnectToPeer,
 }
 
 /// A PeerSession represents a connection to a peer.
@@ -51,11 +55,10 @@ impl PeerSession {
     /// - The connection could not be established
     /// - The handshake was not successful
     pub fn start(&mut self) -> Result<(), PeerSessionError> {
-        let peer_socket = format!("{}:{}", self.peer.ip, self.peer.port)
-            .parse::<std::net::SocketAddr>()
-            .unwrap();
+        let peer_socket = format!("{}:{}", self.peer.ip, self.peer.port);
 
-        let mut stream = TcpStream::connect(&peer_socket).unwrap();
+        let mut stream = TcpStream::connect(&peer_socket)
+            .map_err(|_| PeerSessionError::CouldNotConnectToPeer)?;
 
         let handshake = self.send_handshake(&mut stream)?;
         println!("Received handshake: {:?}", handshake);
@@ -63,10 +66,10 @@ impl PeerSession {
         let total_pieces = (self.torrent.info.length / self.torrent.info.piece_length) as u32;
 
         loop {
-            self.read_message_from_stream(&mut stream);
+            self.read_message_from_stream(&mut stream)?;
 
             if self.status.choked && !self.status.interested {
-                self.send_interested(&mut stream);
+                self.send_interested(&mut stream)?;
             }
 
             if !self.status.choked && self.status.interested {
@@ -77,7 +80,7 @@ impl PeerSession {
 
                     if has_piece {
                         println!("\n\n********* Downloading piece {}...", piece_index);
-                        self.download_piece(&mut stream, piece_index);
+                        self.download_piece(&mut stream, piece_index)?;
                     }
                 }
                 println!("\n\n********* Download complete!");
@@ -89,7 +92,13 @@ impl PeerSession {
     }
 
     /// Downloads a piece from the peer given the piece index.
-    fn download_piece(&mut self, stream: &mut TcpStream, piece_index: u32) {
+    fn download_piece(
+        &mut self,
+        stream: &mut TcpStream,
+        piece_index: u32,
+    ) -> Result<Vec<u8>, PeerSessionError> {
+        self.piece = vec![]; // reset piece
+
         let total_blocks_in_piece = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
         println!(
             "Total blocks for piece {}: {}",
@@ -98,52 +107,101 @@ impl PeerSession {
 
         for block in 0..total_blocks_in_piece {
             println!("Sending request: {}/{}", block, total_blocks_in_piece);
-            self.request_piece(piece_index, block * BLOCK_SIZE, BLOCK_SIZE, stream);
-            self.read_message_from_stream(stream);
+            self.request_piece(piece_index, block * BLOCK_SIZE, BLOCK_SIZE, stream)?;
+            self.read_message_from_stream(stream)?;
         }
 
         self.validate_piece(&self.piece, piece_index);
         println!("Piece {} downloaded!", piece_index);
 
-        self.piece = vec![]; // reset piece
+        Ok(self.piece.clone())
     }
 
-    fn read_message_from_stream(&mut self, stream: &mut TcpStream) {
+    /// Reads & handles a message from the stream.
+    ///
+    /// It returns an error if:
+    /// - The message could not be read
+    fn read_message_from_stream(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
         let mut length = [0; 4];
         let mut msg_type = [0; 1];
 
-        stream.read_exact(&mut length).unwrap();
+        stream
+            .read_exact(&mut length)
+            .map_err(PeerSessionError::ErrorReadingMessage)?;
         let len = u32::from_be_bytes(length);
 
-        stream.read_exact(&mut msg_type).unwrap();
+        stream
+            .read_exact(&mut msg_type)
+            .map_err(PeerSessionError::ErrorReadingMessage)?;
 
         let mut payload = vec![0; (len - 1) as usize];
         if len > 1 {
-            stream.read_exact(&mut payload).unwrap();
+            stream
+                .read_exact(&mut payload)
+                .map_err(PeerSessionError::ErrorReadingMessage)?;
         }
-        println!();
 
-        let message = Message::from_bytes(&msg_type, &payload).unwrap();
+        let message =
+            Message::from_bytes(&msg_type, &payload).map_err(PeerSessionError::FromMessageError)?;
+
         self.handle_message(message);
+        Ok(())
     }
 
     /// Sends a handshake to the peer and returns the handshake received from the peer.
     ///
     /// It returns an error if the handshake could not be sent or the handshake was not successful.
     fn send_handshake(&mut self, stream: &mut TcpStream) -> Result<Handshake, PeerSessionError> {
-        let info_hash = self.torrent.get_info_hash_as_bytes().unwrap();
+        let info_hash = self
+            .torrent
+            .get_info_hash_as_bytes()
+            .map_err(|_| PeerSessionError::HandshakeError)?;
+
         let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
-        stream.write_all(&handshake.to_bytes()).unwrap();
+        stream
+            .write_all(&handshake.to_bytes())
+            .map_err(|_| PeerSessionError::HandshakeError)?;
 
         let mut buffer = [0; 68];
-        match stream.read_exact(&mut buffer) {
-            Ok(_) => (),
-            Err(err) => println!("Error reading from stream: {}", err),
-        }
+        stream
+            .read_exact(&mut buffer)
+            .map_err(|_| PeerSessionError::HandshakeError)?;
 
-        Handshake::from_bytes(&buffer).map_err(PeerSessionError::HandshakeError)
+        Handshake::from_bytes(&buffer).map_err(|_| PeerSessionError::HandshakeError)
     }
 
+    /// Sends a request message to the peer.
+    fn request_piece(
+        &self,
+        index: u32,
+        begin: u32,
+        length: u32,
+        mut stream: &TcpStream,
+    ) -> Result<(), PeerSessionError> {
+        let payload = Request::new(index, begin, length).to_bytes();
+
+        let request_msg = Message::new(MessageId::Request, payload);
+        stream
+            .write_all(&request_msg.to_bytes())
+            .map_err(|_| PeerSessionError::MessageError(MessageId::Request))?;
+        Ok(())
+    }
+
+    /// Sends an interested message to the peer.
+    fn send_interested(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
+        println!("Sending interested...");
+
+        let interested_msg = Message::new(MessageId::Interested, vec![]);
+        stream
+            .write_all(&interested_msg.to_bytes())
+            .map_err(|_| PeerSessionError::MessageError(MessageId::Interested))?;
+
+        self.status.interested = true;
+
+        Ok(())
+    }
+
+    /// Handles a message received from the peer.
     fn handle_message(&mut self, message: Message) {
         match message.id {
             MessageId::Unchoke => self.handle_unchoke(),
@@ -153,35 +211,22 @@ impl PeerSession {
         }
     }
 
-    fn request_piece(&self, index: u32, begin: u32, length: u32, mut stream: &TcpStream) {
-        let payload = Request::new(index, begin, length).to_bytes();
-
-        let request_msg = Message::new(MessageId::Request, payload);
-        stream.write_all(&request_msg.to_bytes()).unwrap();
-    }
-
-    fn send_interested(&mut self, stream: &mut TcpStream) {
-        println!("Sending interested...");
-        let interested_msg = Message::new(MessageId::Interested, vec![]);
-        stream.write_all(&interested_msg.to_bytes()).unwrap();
-        self.status.interested = true;
-    }
-
+    /// Handles an unchoke message received from the peer.
     fn handle_unchoke(&mut self) {
         println!("Received unchoke");
         self.status.choked = false;
     }
 
+    /// Handles a bitfield message received from the peer.
     fn handle_bitfield(&mut self, message: Message) {
         println!("Received bitfield");
         let bitfield = message.payload;
         self.bitfield = Bitfield::new(bitfield);
     }
 
+    /// Handles a piece message received from the peer.
     fn handle_piece(&mut self, message: Message) {
         println!("Received piece");
-        let index = &message.payload[0..4];
-        let begin = &message.payload[4..8];
         let block = &message.payload[8..];
 
         self.piece.append(&mut block.to_vec());
@@ -207,14 +252,18 @@ impl PeerSession {
         if real_piece_hash == res_piece_hash {
             println!("Piece {} hash matches!\n\n", piece_index);
         } else {
-            panic!("Piece {} hash does not match!", piece_index);
+            println!("Piece {} hash does not match!", piece_index);
         }
     }
 
+    /// Converts a byte array to a hex string.
     fn convert_to_hex_string(&self, bytes: &[u8]) -> String {
         let mut res = String::with_capacity(bytes.len() * 2);
         for b in bytes {
-            write!(&mut res, "{:02x}", b).unwrap();
+            match write!(&mut res, "{:02x}", b) {
+                Ok(()) => (),
+                Err(_) => println!("Error converting bytes to hex string!"),
+            }
         }
         res
     }
