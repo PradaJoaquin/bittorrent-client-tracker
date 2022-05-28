@@ -1,5 +1,3 @@
-use std::net::AddrParseError;
-
 use crate::encoder_decoder::bencode::Bencode;
 
 /// `BtPeer` struct containing individual BtPeer information.
@@ -19,11 +17,6 @@ pub enum FromBtPeerError {
     InvalidIp,
     InvalidPort,
     NotADict,
-}
-
-#[derive(Debug)]
-pub enum BtPeerError {
-    AddrParseError(AddrParseError),
 }
 
 impl BtPeer {
