@@ -2,7 +2,7 @@ use std::{net::AddrParseError, num::ParseIntError};
 
 use crate::encoder_decoder::bencode::Bencode;
 
-use super::message::handshake::FromHandshakeError;
+use super::handshake::FromHandshakeError;
 
 /// `BtPeer` struct containing individual BtPeer information.
 ///

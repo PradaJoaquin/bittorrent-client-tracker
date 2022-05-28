@@ -10,8 +10,8 @@ use sha1::{Digest, Sha1};
 use crate::torrent_parser::torrent::Torrent;
 
 use super::bt_peer::BtPeer;
-use super::message::handshake::Handshake;
-use super::message::message::{Bitfield, FromMessageError, Message, MessageId, Request};
+use super::handshake::Handshake;
+use super::message::{Bitfield, FromMessageError, Message, MessageId, Request};
 use super::session_status::SessionStatus;
 
 const PEER_ID: &str = "LA_DEYMONETA_PAPA!!!";
