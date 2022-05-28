@@ -1,8 +1,6 @@
-use std::{net::AddrParseError, num::ParseIntError};
+use std::net::AddrParseError;
 
 use crate::encoder_decoder::bencode::Bencode;
-
-use super::handshake::FromHandshakeError;
 
 /// `BtPeer` struct containing individual BtPeer information.
 ///
@@ -25,8 +23,6 @@ pub enum FromBtPeerError {
 
 #[derive(Debug)]
 pub enum BtPeerError {
-    HandshakeError(ParseIntError),
-    FromHandshakeError(FromHandshakeError),
     AddrParseError(AddrParseError),
 }
 

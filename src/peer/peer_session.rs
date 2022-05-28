@@ -21,7 +21,6 @@ const BLOCK_SIZE: u32 = 16384;
 pub enum PeerSessionError {
     HandshakeError,
     MessageError(MessageId),
-    RequestError(Request),
     ErrorReadingMessage(io::Error),
     FromMessageError(FromMessageError),
     CouldNotConnectToPeer,
