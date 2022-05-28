@@ -12,7 +12,7 @@ use crate::torrent_parser::torrent::Torrent;
 use super::bt_peer::BtPeer;
 use super::message::handshake::Handshake;
 use super::message::message::{Bitfield, FromMessageError, Message, MessageId, Request};
-use super::peer_status::PeerStatus;
+use super::session_status::SessionStatus;
 
 const PEER_ID: &str = "LA_DEYMONETA_PAPA!!!";
 const BLOCK_SIZE: u32 = 16384;
@@ -34,7 +34,7 @@ pub struct PeerSession {
     torrent: Torrent,
     peer: BtPeer,
     bitfield: Bitfield,
-    status: PeerStatus,
+    status: SessionStatus,
     piece: Vec<u8>,
 }
 
@@ -44,7 +44,7 @@ impl PeerSession {
             torrent,
             peer,
             bitfield: Bitfield::new(vec![]),
-            status: PeerStatus::default(),
+            status: SessionStatus::default(),
             piece: vec![],
         }
     }
