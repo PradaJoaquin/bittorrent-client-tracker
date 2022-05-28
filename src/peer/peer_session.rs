@@ -141,7 +141,7 @@ impl PeerSession {
         }
 
         let message =
-            Message::from_bytes(&msg_type, &payload).map_err(PeerSessionError::FromMessageError)?;
+            Message::from_bytes(msg_type, &payload).map_err(PeerSessionError::FromMessageError)?;
 
         self.handle_message(message);
         Ok(())
