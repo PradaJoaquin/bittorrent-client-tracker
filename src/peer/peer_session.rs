@@ -158,7 +158,7 @@ impl PeerSession {
 
         let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
         stream
-            .write_all(&handshake.to_bytes())
+            .write_all(&handshake.as_bytes())
             .map_err(|_| PeerSessionError::HandshakeError)?;
 
         let mut buffer = [0; 68];
@@ -177,11 +177,11 @@ impl PeerSession {
         length: u32,
         mut stream: &TcpStream,
     ) -> Result<(), PeerSessionError> {
-        let payload = Request::new(index, begin, length).to_bytes();
+        let payload = Request::new(index, begin, length).as_bytes();
 
         let request_msg = Message::new(MessageId::Request, payload);
         stream
-            .write_all(&request_msg.to_bytes())
+            .write_all(&request_msg.as_bytes())
             .map_err(|_| PeerSessionError::MessageError(MessageId::Request))?;
         Ok(())
     }
@@ -192,7 +192,7 @@ impl PeerSession {
 
         let interested_msg = Message::new(MessageId::Interested, vec![]);
         stream
-            .write_all(&interested_msg.to_bytes())
+            .write_all(&interested_msg.as_bytes())
             .map_err(|_| PeerSessionError::MessageError(MessageId::Interested))?;
 
         self.status.interested = true;

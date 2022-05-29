@@ -17,7 +17,7 @@ impl Request {
     }
 
     /// Converts a `Request` message to a byte array.
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![0; 12];
         bytes[0..4].copy_from_slice(&self.index.to_be_bytes());
         bytes[4..8].copy_from_slice(&self.begin.to_be_bytes());
@@ -31,13 +31,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_request_to_bytes() {
+    fn test_request_as_bytes() {
         let index = 0u32;
         let begin = 0u32;
         let length = 16384u32;
         let request = Request::new(index, begin, length);
 
-        let bytes = request.to_bytes();
+        let bytes = request.as_bytes();
 
         let mut expected = vec![];
         expected.extend(&index.to_be_bytes());

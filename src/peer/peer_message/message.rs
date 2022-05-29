@@ -56,7 +56,7 @@ impl Message {
     }
 
     /// Converts a `Message` to a byte array.
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let len = self.payload.len() + 1;
         let len_bytes: [u8; 4] = (len as u32).to_be_bytes();
         let mut bytes = vec![0; 4 + len];
@@ -92,14 +92,14 @@ mod tests {
     }
 
     #[test]
-    fn test_message_request_to_bytes() {
+    fn test_message_request_as_bytes() {
         let index = 0u32.to_be_bytes();
         let begin = 0u32.to_be_bytes();
         let length = 16384u32.to_be_bytes();
         let payload = [index, begin, length].concat();
         let msg = Message::new(MessageId::Request, payload.clone());
 
-        let bytes = msg.to_bytes();
+        let bytes = msg.as_bytes();
 
         let len = 13u32.to_be_bytes();
         let msg_type = 6u8.to_be_bytes();
@@ -112,10 +112,10 @@ mod tests {
     }
 
     #[test]
-    fn test_message_interested_to_bytes() {
+    fn test_message_interested_as_bytes() {
         let msg = Message::new(MessageId::Interested, vec![]);
 
-        let bytes = msg.to_bytes();
+        let bytes = msg.as_bytes();
 
         let len = 1u32.to_be_bytes();
         let msg_type = 2u8.to_be_bytes();

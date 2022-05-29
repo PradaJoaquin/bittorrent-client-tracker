@@ -29,7 +29,7 @@ impl Handshake {
     }
 
     /// Converts a `Handshake` message to a byte array.
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![self.pstrlen];
         bytes.extend(self.pstr.as_bytes());
         bytes.extend(&self.reserved);
@@ -75,7 +75,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_to_bytes() {
+    fn test_as_bytes() {
         let expected_handshake_len = 68;
         let expected_pstrlen = 19;
         let expected_pstr = b"BitTorrent protocol".to_vec();
@@ -85,7 +85,7 @@ mod tests {
         let peer_id: Vec<u8> = (21..=40).collect();
         let handshake = Handshake::new(info_hash.clone(), peer_id.clone());
 
-        let bytes = handshake.to_bytes();
+        let bytes = handshake.as_bytes();
 
         assert_eq!(bytes.len(), expected_handshake_len);
         assert_eq!(bytes[0], expected_pstrlen);
@@ -104,7 +104,7 @@ mod tests {
         let info_hash: Vec<u8> = (1..=20).collect();
         let peer_id: Vec<u8> = (21..=40).collect();
         let handshake = Handshake::new(info_hash.clone(), peer_id.clone());
-        let bytes = handshake.to_bytes();
+        let bytes = handshake.as_bytes();
 
         let handshake = Handshake::from_bytes(&bytes).unwrap();
 
