@@ -1,52 +1,3 @@
-/// Represents a Bitfield.
-///
-/// It contains information about the pieces that the peer has.
-#[derive(Debug)]
-pub struct Bitfield {
-    bitfield: Vec<u8>,
-}
-
-impl Bitfield {
-    pub fn new(bitfield: Vec<u8>) -> Bitfield {
-        Bitfield { bitfield }
-    }
-
-    /// Returns whether the peer has the piece with the given index.
-    pub fn has_piece(&self, index: u32) -> bool {
-        let byte = self.bitfield[index as usize / 8];
-        let bit = byte >> (7 - (index % 8)) & 1;
-        bit != 0
-    }
-}
-
-/// Represents the payload of a Request message.
-#[derive(Debug)]
-pub struct Request {
-    index: u32,
-    begin: u32,
-    length: u32,
-}
-
-impl Request {
-    /// Creates a new `Request` message.
-    pub fn new(index: u32, begin: u32, length: u32) -> Self {
-        Self {
-            index,
-            begin,
-            length,
-        }
-    }
-
-    /// Converts a `Request` message to a byte array.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![0; 12];
-        bytes[0..4].copy_from_slice(&self.index.to_be_bytes());
-        bytes[4..8].copy_from_slice(&self.begin.to_be_bytes());
-        bytes[8..12].copy_from_slice(&self.length.to_be_bytes());
-        bytes
-    }
-}
-
 // IDs of the messages defined in the protocol.
 #[derive(PartialEq, Debug, Clone)]
 pub enum MessageId {
@@ -173,43 +124,5 @@ mod tests {
         expected.extend(&msg_type);
 
         assert_eq!(bytes, expected);
-    }
-
-    #[test]
-    fn test_request_to_bytes() {
-        let index = 0u32;
-        let begin = 0u32;
-        let length = 16384u32;
-        let request = Request::new(index, begin, length);
-
-        let bytes = request.to_bytes();
-
-        let mut expected = vec![];
-        expected.extend(&index.to_be_bytes());
-        expected.extend(&begin.to_be_bytes());
-        expected.extend(&length.to_be_bytes());
-
-        assert_eq!(bytes, expected);
-    }
-
-    #[test]
-    fn test_bitfield_has_all_pieces() {
-        let bitfield = Bitfield::new(vec![0b11111111, 0b11111111, 0b11111111, 0b11111111]);
-
-        assert!(bitfield.has_piece(4));
-    }
-
-    #[test]
-    fn test_bitfield_has_one_piece() {
-        let bitfield = Bitfield::new(vec![0b00000000, 0b00000010, 0b00000000, 0b00000000]);
-
-        assert!(bitfield.has_piece(14));
-    }
-
-    #[test]
-    fn test_bitfield_not_has_piece() {
-        let bitfield = Bitfield::new(vec![0b11111111, 0b11111111, 0b11111101, 0b11111111]);
-
-        assert!(!bitfield.has_piece(22));
     }
 }
