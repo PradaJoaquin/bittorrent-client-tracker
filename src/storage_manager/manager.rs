@@ -1,9 +1,19 @@
-use std::fs::OpenOptions;
-use std::os::unix::fs::FileExt;
+use std::fs::{File, OpenOptions};
+use std::io::{Seek, SeekFrom::Start, Write};
+
+trait WriteWithOffset {
+    fn write_all_at(&mut self, buf: &[u8], offset: u64) -> Result<(), std::io::Error>;
+}
+impl WriteWithOffset for File {
+    fn write_all_at(&mut self, buf: &[u8], offset: u64) -> Result<(), std::io::Error> {
+        self.seek(Start(offset))?;
+        self.write_all(buf)
+    }
+}
 
 pub fn save_piece(name: String, piece: &[u8], piece_offset: u64) -> Result<(), std::io::Error> {
     // Por ahora guardamos en el mismo directorio, usando el mismo nombre que tenga el archivo en el torrent.
-    let file = OpenOptions::new()
+    let mut file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
