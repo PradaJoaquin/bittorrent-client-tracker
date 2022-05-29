@@ -12,7 +12,7 @@ use crate::tracker::http::constants::PEER_ID;
 
 use super::bt_peer::BtPeer;
 use super::handshake::Handshake;
-use super::message::{Bitfield, FromMessageError, Message, MessageId, Request};
+use super::peer_message::{Bitfield, FromMessageError, Message, MessageId, Request};
 use super::session_status::SessionStatus;
 
 const BLOCK_SIZE: u32 = 16384;
