@@ -150,11 +150,11 @@ mod tests {
         let logger_sender_2 = logger.new_sender();
         let logger_sender_3 = logger.new_sender();
 
-        thread::spawn(move || logger_sender_1.info(loggin[0]).unwrap());
+        thread::spawn(move || logger_sender_1.info(loggin[0]));
         sleep(Duration::from_millis(100));
-        thread::spawn(move || logger_sender_2.info(loggin[1]).unwrap());
+        thread::spawn(move || logger_sender_2.info(loggin[1]));
         sleep(Duration::from_millis(100));
-        thread::spawn(move || logger_sender_3.info(loggin[2]).unwrap());
+        thread::spawn(move || logger_sender_3.info(loggin[2]));
 
         let paths = fs::read_dir(path).unwrap();
         for log_path in paths {
@@ -183,9 +183,9 @@ mod tests {
 
         let logger_sender = logger.new_sender();
 
-        logger_sender.info(loggin[0]).unwrap();
-        logger_sender.info(loggin[1]).unwrap();
-        logger_sender.info(loggin[2]).unwrap();
+        logger_sender.info(loggin[0]);
+        logger_sender.info(loggin[1]);
+        logger_sender.info(loggin[2]);
 
         let paths = fs::read_dir(path).unwrap();
         for log_path in paths {
@@ -215,9 +215,9 @@ mod tests {
         let loggin_assert = loggin.clone();
 
         thread::spawn(move || match log_type.as_str() {
-            "info" => logger_sender.info(loggin.as_str()).unwrap(),
-            "warn" => logger_sender.warn(loggin.as_str()).unwrap(),
-            "error" => logger_sender.error(loggin.as_str()).unwrap(),
+            "info" => logger_sender.info(loggin.as_str()),
+            "warn" => logger_sender.warn(loggin.as_str()),
+            "error" => logger_sender.error(loggin.as_str()),
             _ => panic!("Unknown log type"),
         });
 

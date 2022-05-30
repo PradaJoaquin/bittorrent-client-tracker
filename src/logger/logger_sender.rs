@@ -23,35 +23,37 @@ impl LoggerSender {
 
     /// Writes an Info type log to the connected logger
     ///
-    /// It returns an error if:
+    /// It prints an error if:
     /// - Couldn't send the information to the receiver
-    pub fn info(&self, value: &str) -> Result<(), LoggerError> {
+    pub fn info(&self, value: &str) {
         let formated_value = format!("[{}] [INFO] - {}", self.get_thread_name(), value);
         self.send(formated_value)
     }
 
     /// Writes a Warn type log to the connected logger
     ///
-    /// It returns an error if:
+    /// It prints an error if:
     /// - Couldn't send the information to the receiver
-    pub fn warn(&self, value: &str) -> Result<(), LoggerError> {
+    pub fn warn(&self, value: &str) {
         let formated_value = format!("[{}] [WARN] - {}", self.get_thread_name(), value);
         self.send(formated_value)
     }
 
     /// Writes an Error type log to the connected logger
     ///
-    /// It returns an error if:
+    /// It prints an error if:
     /// - Couldn't send the information to the receiver
-    pub fn error(&self, value: &str) -> Result<(), LoggerError> {
+    pub fn error(&self, value: &str) {
         let formated_value = format!("[{}] [ERROR] - {}", self.get_thread_name(), value);
         self.send(formated_value)
     }
 
-    fn send(&self, value: String) -> Result<(), LoggerError> {
+    fn send(&self, value: String) {
         match self.sender_clone.send(value.to_string()) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(LoggerError::SendError(value)),
+            Ok(_) => (),
+            Err(err) => eprintln!(
+                "Error({err}) writing: {value} to the log. The logger receiver is probably dead."
+            ),
         }
     }
 
