@@ -99,22 +99,34 @@ impl TrackerResponse {
     }
 
     fn create_peers(bencode: &Bencode) -> Result<Vec<BtPeer>, FromTrackerResponseError> {
-        let peers_list = match bencode {
-            Bencode::BList(l) => l,
-            _ => return Err(FromTrackerResponseError::NotAList),
-        };
+        match bencode {
+            Bencode::BList(list) => Self::create_peers_from_dict(list),
+            Bencode::BString(str) => Self::create_peers_from_bstring(str),
+            _ => Err(FromTrackerResponseError::NotAList),
+        }
+    }
 
+    fn create_peers_from_dict(list: &[Bencode]) -> Result<Vec<BtPeer>, FromTrackerResponseError> {
         let mut peers = Vec::new();
 
-        for p in peers_list {
-            let peer = match BtPeer::from(p.clone()) {
-                Ok(p) => p,
-                Err(e) => return Err(FromTrackerResponseError::InvalidPeers(e)),
-            };
+        for p in list {
+            let peer = BtPeer::from(p.clone()).map_err(FromTrackerResponseError::InvalidPeers)?;
             peers.push(peer);
         }
 
         Ok(peers)
+    }
+
+    fn create_peers_from_bstring(bstring: &[u8]) -> Result<Vec<BtPeer>, FromTrackerResponseError> {
+        Ok(bstring
+            .chunks(6)
+            .map(|chunk| {
+                let ip = format!("{}.{}.{}.{}", chunk[0], chunk[1], chunk[2], chunk[3]);
+                let port = u16::from_be_bytes([chunk[4], chunk[5]]) as i64;
+
+                BtPeer::new(ip, port)
+            })
+            .collect())
     }
 }
 
@@ -129,9 +141,7 @@ mod tests {
         let peer_dict = build_peer_dict(b"id1".to_vec(), b"127.0.0.1".to_vec(), 6868);
         let peer_dict2 = build_peer_dict(b"id2".to_vec(), b"127.0.0.2".to_vec(), 4242);
 
-        let mut peers_list = Vec::new();
-        peers_list.push(Bencode::BDict(peer_dict));
-        peers_list.push(Bencode::BDict(peer_dict2));
+        let peers_list = vec![Bencode::BDict(peer_dict), Bencode::BDict(peer_dict2)];
 
         let mut dict = BTreeMap::new();
         dict.insert(b"interval".to_vec(), Bencode::BNumber(10));

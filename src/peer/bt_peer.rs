@@ -5,7 +5,7 @@ use crate::encoder_decoder::bencode::Bencode;
 /// To create a new `BtPeer` use the method builder `from()`.
 #[derive(Debug)]
 pub struct BtPeer {
-    pub peer_id: Vec<u8>,
+    pub peer_id: Option<Vec<u8>>,
     pub ip: String,
     pub port: i64,
 }
@@ -20,6 +20,15 @@ pub enum FromBtPeerError {
 }
 
 impl BtPeer {
+    /// Builds a new `BtPeer` decoding a bencoded Vec<u8> cointaining the BtPeer information.
+    pub fn new(ip: String, port: i64) -> Self {
+        Self {
+            peer_id: None,
+            ip,
+            port,
+        }
+    }
+
     /// Builds a new `BtPeer` from a bencoded peer from the tracker response peer list.
     ///
     ///
@@ -48,7 +57,11 @@ impl BtPeer {
             }
         }
 
-        Ok(BtPeer { peer_id, ip, port })
+        Ok(BtPeer {
+            peer_id: Some(peer_id),
+            ip,
+            port,
+        })
     }
 
     fn create_peer_id(bencode: &Bencode) -> Result<Vec<u8>, FromBtPeerError> {
@@ -100,7 +113,16 @@ mod tests {
 
         let bt_peer = BtPeer::from(bencode).unwrap();
 
-        assert_eq!(bt_peer.peer_id, b"peer id".to_vec());
+        assert_eq!(bt_peer.peer_id, Some(b"peer id".to_vec()));
+        assert_eq!(bt_peer.ip, "127.0.0.1");
+        assert_eq!(bt_peer.port, 6868);
+    }
+
+    #[test]
+    fn test_new_peer() {
+        let bt_peer = BtPeer::new("127.0.0.1".to_string(), 6868);
+
+        assert_eq!(bt_peer.peer_id, None);
         assert_eq!(bt_peer.ip, "127.0.0.1");
         assert_eq!(bt_peer.port, 6868);
     }

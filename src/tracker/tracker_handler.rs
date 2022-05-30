@@ -93,24 +93,21 @@ mod tests {
 
         let tracker_handler = TrackerHandler::new(torrent, test_port).unwrap();
 
-        assert!(tracker_handler.get_peers_list().unwrap().peers.len() > 0);
+        assert!(!tracker_handler.get_peers_list().unwrap().peers.is_empty());
     }
 
-    // Test con http funciona, solo que faltaría parsear cuando vienen los peers como string de bytes en vez de dict.
+    #[test]
+    fn test_http_request() {
+        let torrent = create_test_torrent(
+            "http://vps02.net.orel.ru/announce",
+            "f834824904be1854c89ba007c01678ff797f8dc7",
+        );
+        let test_port = 6969;
 
-    // #[test]
-    // fn test_http_request() {
-    //     let torrent = create_test_torrent(
-    //         "http://vps02.net.orel.ru/announce",
-    //         "f834824904be1854c89ba007c01678ff797f8dc7",
-    //     );
-    //     let test_port = 6969;
+        let tracker_handler = TrackerHandler::new(torrent, test_port).unwrap();
 
-    //     let tracker_handler = TrackerHandler::new(torrent, test_port);
-
-    //     let actual_res = tracker_handler.get_peers_list();
-    //     println!("{:?}", actual_res);
-    // }
+        assert!(!tracker_handler.get_peers_list().unwrap().peers.is_empty());
+    }
 
     // Auxiliar
 
