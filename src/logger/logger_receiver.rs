@@ -3,7 +3,7 @@ use super::logger_error::LoggerError;
 use super::logger_sender::LoggerSender;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
+use std::{io, thread};
 
 use std::fs;
 use std::fs::File;
@@ -28,11 +28,13 @@ impl Logger {
     /// In case of success it returns a Logger struct and creates a new log file at the directory path.
     ///
     /// It returns an LoggerError if:
-    /// - A new file could not be created at the directory path given
-    /// - There was a problem creating a new thread for the logger receiver
+    /// - There was a problem creating the logging directory.
+    /// - A new file could not be created at the logging directory.
+    /// - There was a problem creating a new thread for the logger receiver.
     pub fn new(dir_path: &str) -> Result<Self, LoggerError> {
         let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
 
+        Self::create_log_directory(dir_path)?;
         let file = Self::create_log_file(dir_path)?;
         Self::spawn_log_receiver(receiver, file)?;
 
@@ -44,6 +46,19 @@ impl Logger {
     /// Creates a new LoggerSender for the current Logger
     pub fn new_sender(&self) -> LoggerSender {
         self.sender.clone()
+    }
+
+    fn create_log_directory(dir_path: &str) -> Result<(), LoggerError> {
+        match fs::create_dir_all(dir_path) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                if error.kind() == io::ErrorKind::AlreadyExists {
+                    Ok(())
+                } else {
+                    Err(LoggerError::LogDirectoryError(format!("{}", error)))
+                }
+            }
+        }
     }
 
     fn spawn_log_receiver(receiver: Receiver<String>, file: File) -> Result<(), LoggerError> {
@@ -84,7 +99,7 @@ impl Logger {
 
         match file {
             Ok(file) => Ok(file),
-            Err(_) => Err(LoggerError::BadLogPathError(dir_path.to_string())),
+            Err(_) => Err(LoggerError::LogFileError(dir_path.to_string())),
         }
     }
 }
@@ -98,51 +113,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_good_log() {
+    fn test_logging_to_existing_directory() {
         let path = "./test_good_log";
-        let loggin = "log_test".to_string();
+        fs::create_dir(path).unwrap();
+        let logging = "log_test".to_string();
         let log_type = "info".to_string();
-        create_log_and_assert_loggin(path, loggin, log_type);
+        assert_logging(path, logging, log_type);
+    }
+
+    #[test]
+    fn test_logging_to_non_existant_directory() {
+        let path = "non_existant_directory";
+        let logging = "[INFO]";
+        let log_type = "info".to_string();
+
+        assert_logging(path, logging.to_string(), log_type);
     }
 
     #[test]
     fn test_info_log() {
         let path = "./test_info_log";
-        let loggin = "[INFO]";
+        let logging = "[INFO]";
         let log_type = "info".to_string();
-        create_log_and_assert_loggin(path, loggin.to_string(), log_type);
+        assert_logging(path, logging.to_string(), log_type);
     }
 
     #[test]
     fn test_warn_log() {
         let path = "./test_warn_log";
-        let loggin = "[WARN]";
+        let logging = "[WARN]";
         let log_type = "warn".to_string();
-        create_log_and_assert_loggin(path, loggin.to_string(), log_type);
+        assert_logging(path, logging.to_string(), log_type);
     }
 
     #[test]
     fn test_error_log() {
         let path = "./test_error_log";
-        let loggin = "[ERROR]";
+        let logging = "[ERROR]";
         let log_type = "error".to_string();
-        create_log_and_assert_loggin(path, loggin.to_string(), log_type);
-    }
-
-    #[test]
-    fn test_bad_path() {
-        let path = "bad_path";
-
-        let logger = Logger::new(path);
-
-        assert!(logger.is_err());
+        assert_logging(path, logging.to_string(), log_type);
     }
 
     #[test]
     fn test_multiple_loggin() {
         let path = "./test_multiple_loggin";
-        let loggin = ["log_test_1", "log_test_2", "log_test_3"];
-        fs::create_dir(path).unwrap();
+        let logging = ["log_test_1", "log_test_2", "log_test_3"];
 
         let logger = Logger::new(path).unwrap();
 
@@ -150,11 +165,11 @@ mod tests {
         let logger_sender_2 = logger.new_sender();
         let logger_sender_3 = logger.new_sender();
 
-        thread::spawn(move || logger_sender_1.info(loggin[0]));
+        thread::spawn(move || logger_sender_1.info(logging[0]));
         sleep(Duration::from_millis(100));
-        thread::spawn(move || logger_sender_2.info(loggin[1]));
+        thread::spawn(move || logger_sender_2.info(logging[1]));
         sleep(Duration::from_millis(100));
-        thread::spawn(move || logger_sender_3.info(loggin[2]));
+        thread::spawn(move || logger_sender_3.info(logging[2]));
 
         let paths = fs::read_dir(path).unwrap();
         for log_path in paths {
@@ -165,7 +180,7 @@ mod tests {
             for line in reader.lines() {
                 let current_line = line.unwrap();
 
-                assert!(current_line.contains(loggin[counter]));
+                assert!(current_line.contains(logging[counter]));
                 counter += 1;
             }
         }
@@ -176,16 +191,15 @@ mod tests {
     #[test]
     fn test_multiple_loggin_same_thread() {
         let path = "./test_multiple_loggin_same_thread";
-        let loggin = ["log_test_1", "log_test_2", "log_test_3"];
-        fs::create_dir(path).unwrap();
+        let logging = ["log_test_1", "log_test_2", "log_test_3"];
 
         let logger = Logger::new(path).unwrap();
 
         let logger_sender = logger.new_sender();
 
-        logger_sender.info(loggin[0]);
-        logger_sender.info(loggin[1]);
-        logger_sender.info(loggin[2]);
+        logger_sender.info(logging[0]);
+        logger_sender.info(logging[1]);
+        logger_sender.info(logging[2]);
 
         let paths = fs::read_dir(path).unwrap();
         for log_path in paths {
@@ -196,7 +210,7 @@ mod tests {
             for line in reader.lines() {
                 let current_line = line.unwrap();
 
-                assert!(current_line.contains(loggin[counter]));
+                assert!(current_line.contains(logging[counter]));
                 counter += 1;
             }
         }
@@ -206,18 +220,16 @@ mod tests {
 
     // Auxiliary functions
 
-    fn create_log_and_assert_loggin(path: &str, loggin: String, log_type: String) {
-        fs::create_dir(path).unwrap();
-
+    fn assert_logging(path: &str, logging: String, log_type: String) {
         let logger = Logger::new(path).unwrap();
         let logger_sender = logger.new_sender();
 
-        let loggin_assert = loggin.clone();
+        let logging_assert = logging.clone();
 
         thread::spawn(move || match log_type.as_str() {
-            "info" => logger_sender.info(loggin.as_str()),
-            "warn" => logger_sender.warn(loggin.as_str()),
-            "error" => logger_sender.error(loggin.as_str()),
+            "info" => logger_sender.info(logging.as_str()),
+            "warn" => logger_sender.warn(logging.as_str()),
+            "error" => logger_sender.error(logging.as_str()),
             _ => panic!("Unknown log type"),
         });
 
@@ -229,7 +241,7 @@ mod tests {
             for line in reader.lines() {
                 let current_line = line.unwrap();
 
-                assert!(current_line.contains(loggin_assert.as_str()));
+                assert!(current_line.contains(logging_assert.as_str()));
             }
         }
 

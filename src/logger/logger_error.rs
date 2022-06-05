@@ -4,5 +4,6 @@
 pub enum LoggerError {
     SpawnThreadError,
     SendError(String),
-    BadLogPathError(String),
+    LogDirectoryError(String),
+    LogFileError(String),
 }
