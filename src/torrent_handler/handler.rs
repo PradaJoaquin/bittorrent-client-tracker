@@ -9,7 +9,6 @@ use crate::{
     torrent_parser::torrent::Torrent,
     tracker::tracker_handler::{TrackerHandler, TrackerHandlerError},
 };
-use std::thread::yield_now;
 use std::{sync::Arc, thread};
 
 /// Struct for handling the torrent download.
@@ -65,14 +64,36 @@ impl TorrentHandler {
 
             // Iniciar conección con cada peer
             for peer in tracker_response.peers {
-                // Si se llego al máximo de peers simultaneos esperar hasta que se libere uno
-                while self
+                let mut current_peers = self
                     .torrent_status
                     .current_peers()
-                    .map_err(TorrentHandlerError::TorrentStatusError)?
-                    == constants::MAX_CURRENT_PEERS
+                    .map_err(TorrentHandlerError::TorrentStatusError)?;
+
+                let mut remaining_pieces = self
+                    .torrent_status
+                    .remaining_pieces()
+                    .map_err(TorrentHandlerError::TorrentStatusError)?;
+
+                let mut is_finished = self.torrent_download_finished()?;
+
+                // Si se llego  máximo de peers simultaneos esperar hasta que se libere uno
+                while (current_peers >= constants::MAX_CURRENT_PEERS
+                    || current_peers >= remaining_pieces)
+                    && !is_finished
                 {
-                    yield_now();
+                    thread::yield_now();
+
+                    current_peers = self
+                        .torrent_status
+                        .current_peers()
+                        .map_err(TorrentHandlerError::TorrentStatusError)?;
+
+                    remaining_pieces = self
+                        .torrent_status
+                        .remaining_pieces()
+                        .map_err(TorrentHandlerError::TorrentStatusError)?;
+
+                    is_finished = self.torrent_download_finished()?;
                 }
                 self.connect_to_peer(peer)?;
             }

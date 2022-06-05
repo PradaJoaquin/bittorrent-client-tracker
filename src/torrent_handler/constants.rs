@@ -1,1 +1,1 @@
-pub const MAX_CURRENT_PEERS: usize = 5;
+pub const MAX_CURRENT_PEERS: usize = 20;

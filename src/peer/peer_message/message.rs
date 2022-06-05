@@ -1,6 +1,7 @@
 // IDs of the messages defined in the protocol.
 #[derive(PartialEq, Debug, Clone)]
 pub enum MessageId {
+    KeepAlive = -1,
     Choke = 0,
     Unchoke = 1,
     Interested = 2,

@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{
     io::{Read, Write as IOWrite},
     net::TcpStream,
@@ -8,7 +9,7 @@ use std::{
 
 use sha1::{Digest, Sha1};
 
-use crate::torrent_handler::status::AtomicTorrentStatus;
+use crate::torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
 use crate::torrent_parser::torrent::Torrent;
 use crate::tracker::http::constants::PEER_ID;
 
@@ -18,6 +19,8 @@ use super::peer_message::{Bitfield, FromMessageError, Message, MessageId, Reques
 use super::session_status::SessionStatus;
 
 const BLOCK_SIZE: u32 = 16384;
+const PIPELINING_SIZE: u32 = 5;
+const READ_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug)]
 pub enum PeerSessionError {
@@ -26,6 +29,12 @@ pub enum PeerSessionError {
     ErrorReadingMessage(io::Error),
     FromMessageError(FromMessageError),
     CouldNotConnectToPeer,
+    ErrorDisconnectingFromPeer(AtomicTorrentStatusError),
+    ErrorAbortingPiece(AtomicTorrentStatusError),
+    ErrorSelectingPiece(AtomicTorrentStatusError),
+    ErrorGettingCurrentDownloadingPieces(AtomicTorrentStatusError),
+    ErrorGettingRemainingPieces(AtomicTorrentStatusError),
+    ErrorNotifyingPieceDownloaded(AtomicTorrentStatusError),
 }
 
 /// A PeerSession represents a connection to a peer.
@@ -38,6 +47,7 @@ pub struct PeerSession {
     status: SessionStatus,
     piece: Vec<u8>,
     torrent_status: Arc<AtomicTorrentStatus>,
+    current_piece: u32,
 }
 
 impl PeerSession {
@@ -53,6 +63,7 @@ impl PeerSession {
             status: SessionStatus::default(),
             piece: vec![],
             torrent_status,
+            current_piece: 0,
         }
     }
 
@@ -62,10 +73,35 @@ impl PeerSession {
     /// - The connection could not be established
     /// - The handshake was not successful
     pub fn start(&mut self) -> Result<(), PeerSessionError> {
+        match self.start_wrap() {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.torrent_status
+                    .peer_disconnected()
+                    .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
+                self.torrent_status
+                    .piece_aborted(self.current_piece)
+                    .map_err(PeerSessionError::ErrorAbortingPiece)?;
+                Err(e)
+            }
+        }
+    }
+
+    fn start_wrap(&mut self) -> Result<(), PeerSessionError> {
         let peer_socket = format!("{}:{}", self.peer.ip, self.peer.port);
 
         let mut stream = TcpStream::connect(&peer_socket)
             .map_err(|_| PeerSessionError::CouldNotConnectToPeer)?;
+
+        // set timeouts
+
+        stream
+            .set_read_timeout(Some(READ_WRITE_TIMEOUT))
+            .map_err(|_| PeerSessionError::HandshakeError)?;
+
+        stream
+            .set_write_timeout(Some(READ_WRITE_TIMEOUT))
+            .map_err(|_| PeerSessionError::HandshakeError)?;
 
         let handshake = self.send_handshake(&mut stream)?;
         println!("Received handshake: {:?}", handshake);
@@ -78,21 +114,61 @@ impl PeerSession {
             }
 
             if !self.status.choked && self.status.interested {
-                println!("Requesting pieces...");
-                loop {
-                    match self.torrent_status.select_piece(&self.bitfield).unwrap() {
-                        Some(piece_index) => {
-                            println!("\n\n********* Downloading piece {}...", piece_index);
-                            self.download_piece(&mut stream, piece_index)?
-                        }
-                        None => {
-                            println!("No pieces left to download in this peer");
-                            self.torrent_status.peer_diconnected().unwrap();
-                            break;
-                        }
-                    };
-                }
+                self.request_pieces(&mut stream)?;
             }
+        }
+    }
+
+    fn request_pieces(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
+        println!("Requesting pieces...");
+        loop {
+            let piece_index = self
+                .torrent_status
+                .select_piece(&self.bitfield)
+                .map_err(PeerSessionError::ErrorSelectingPiece)?;
+
+            match piece_index {
+                Some(piece_index) => {
+                    println!("\n\n********* Downloading piece {}...", piece_index);
+                    self.current_piece = piece_index;
+                    match self.download_piece(stream, piece_index) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            println!(
+                                "\n\n********* Error downloading piece {}: {:?}",
+                                piece_index, e
+                            );
+
+                            self.torrent_status
+                                .peer_disconnected()
+                                .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
+                            self.torrent_status
+                                .piece_aborted(piece_index)
+                                .map_err(PeerSessionError::ErrorAbortingPiece)?;
+
+                            panic!("ERROR");
+                        }
+                    }
+                }
+                None => {
+                    println!("No pieces left to download in this peer");
+
+                    let current_downloading_pieces = self
+                        .torrent_status
+                        .current_downloading_pieces()
+                        .map_err(PeerSessionError::ErrorGettingCurrentDownloadingPieces)?;
+                    println!(
+                        "******** PIECES DOWNLOADING: {}",
+                        current_downloading_pieces
+                    );
+
+                    self.torrent_status
+                        .peer_disconnected()
+                        .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
+
+                    panic!("ERROR");
+                }
+            };
         }
     }
 
@@ -104,32 +180,78 @@ impl PeerSession {
     ) -> Result<Vec<u8>, PeerSessionError> {
         self.piece = vec![]; // reset piece
 
-        if piece_index == 1006 {
-            self.request_piece(
-                piece_index,
-                0,
-                (self.torrent.info.length % self.torrent.info.piece_length) as u32,
-                stream,
-            )?;
-            self.read_message_from_stream(stream).unwrap();
-        } else {
-            let total_blocks_in_piece = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
+        let last_piece = (self.torrent.info.length as f64 / self.torrent.info.piece_length as f64)
+            .ceil() as u32
+            - 1;
 
-            for block in 0..total_blocks_in_piece {
-                self.request_piece(piece_index, block * BLOCK_SIZE, BLOCK_SIZE, stream)?;
-                while self.read_message_from_stream(stream)? != MessageId::Piece {
-                    continue;
+        let entire_blocks_in_piece = if piece_index != last_piece {
+            self.torrent.info.piece_length as u32 / BLOCK_SIZE
+        } else {
+            let last_piece_size =
+                (self.torrent.info.length % self.torrent.info.piece_length) as u32 / BLOCK_SIZE;
+
+            // If the last piece is multiple of the piece length, then is the same as the other pieces.
+            if last_piece_size == 0 {
+                self.torrent.info.piece_length as u32 / BLOCK_SIZE
+            } else {
+                last_piece_size
+            }
+        };
+
+        let last_block_size =
+            (self.torrent.info.length % self.torrent.info.piece_length) as u32 % BLOCK_SIZE;
+
+        let mut blocks_downloaded = 0;
+        while blocks_downloaded < entire_blocks_in_piece {
+            let blocks_to_download =
+                if (entire_blocks_in_piece - blocks_downloaded) % PIPELINING_SIZE == 0 {
+                    PIPELINING_SIZE
+                } else {
+                    entire_blocks_in_piece - blocks_downloaded
+                };
+
+            // request blocks
+            for block in 0..blocks_to_download {
+                self.request_piece(
+                    piece_index,
+                    (block + blocks_downloaded) * BLOCK_SIZE,
+                    BLOCK_SIZE,
+                    stream,
+                )?;
+            }
+
+            // Check that we receive a piece message.
+            // If we receive another message we handle it accordingly.
+            let mut current_blocks_downloaded = 0;
+            while current_blocks_downloaded < blocks_to_download {
+                if self.read_message_from_stream(stream)? == MessageId::Piece {
+                    current_blocks_downloaded += 1;
+                    blocks_downloaded += 1;
                 }
             }
         }
 
-        self.validate_piece(&self.piece, piece_index);
+        if last_block_size != 0 && piece_index == last_piece {
+            self.request_piece(
+                piece_index,
+                entire_blocks_in_piece * BLOCK_SIZE,
+                last_block_size,
+                stream,
+            )?;
+            while self.read_message_from_stream(stream)? != MessageId::Piece {
+                continue;
+            }
+        }
+
+        self.validate_piece(&self.piece, piece_index)?;
         println!("Piece {} downloaded!", piece_index);
 
-        println!(
-            "********** PIECES REMAINING: {}",
-            self.torrent_status.remaining_pieces().unwrap()
-        );
+        let remaining_pieces = self
+            .torrent_status
+            .remaining_pieces()
+            .map_err(PeerSessionError::ErrorGettingRemainingPieces)?;
+        println!("********** PIECES REMAINING: {}", remaining_pieces);
+
         Ok(self.piece.clone())
     }
 
@@ -149,11 +271,16 @@ impl PeerSession {
             .map_err(PeerSessionError::ErrorReadingMessage)?;
         let len = u32::from_be_bytes(length);
 
+        if len == 0 {
+            return Ok(MessageId::KeepAlive);
+        }
+
         stream
             .read_exact(&mut msg_type)
             .map_err(PeerSessionError::ErrorReadingMessage)?;
 
         let mut payload = vec![0; (len - 1) as usize];
+
         if len > 1 {
             stream
                 .read_exact(&mut payload)
@@ -254,7 +381,7 @@ impl PeerSession {
     /// Validates the downloaded piece.
     ///
     /// Checks the piece hash and compares it to the hash in the torrent file.
-    fn validate_piece(&self, piece: &[u8], piece_index: u32) {
+    fn validate_piece(&self, piece: &[u8], piece_index: u32) -> Result<(), PeerSessionError> {
         println!("\nValidating piece {}...", piece_index);
         let start = (piece_index * 20) as usize;
         let end = start + 20;
@@ -272,10 +399,19 @@ impl PeerSession {
             println!("Piece {} hash matches!\n\n", piece_index);
             self.torrent_status
                 .piece_downloaded(piece_index, self.piece.clone())
-                .unwrap();
+                .map_err(PeerSessionError::ErrorNotifyingPieceDownloaded)?;
         } else {
             println!("Piece {} hash does not match!", piece_index);
+            self.torrent_status
+                .peer_disconnected()
+                .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
+            self.torrent_status
+                .piece_aborted(piece_index)
+                .map_err(PeerSessionError::ErrorAbortingPiece)?;
+            panic!("MAL PEER, me pasaste mal la pieza");
         }
+
+        Ok(())
     }
 
     /// Converts a byte array to a hex string.

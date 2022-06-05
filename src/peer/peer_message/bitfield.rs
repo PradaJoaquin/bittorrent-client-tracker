@@ -11,11 +11,16 @@ impl Bitfield {
         Bitfield { bitfield }
     }
 
-    /// Returns whether the peer has the piece with the given index.
+    /// Returns whether the bitfield has the piece with the given index.
     pub fn has_piece(&self, index: u32) -> bool {
         let byte = self.bitfield[index as usize / 8];
         let bit = byte >> (7 - (index % 8)) & 1;
         bit != 0
+    }
+
+    // Returns whether the bitfield has all the pieces.
+    pub fn is_complete(&self) -> bool {
+        self.bitfield.iter().all(|byte| *byte == 0b1111_1111)
     }
 }
 

@@ -118,6 +118,8 @@ impl HttpHandler {
         request.push_str("Host: ");
         request.push_str(self.tracker_url.host.as_str());
         request.push_str("\r\n");
+        request.push_str("User-Agent: LDTorrent/0.1");
+        request.push_str("\r\n");
         request.push_str("\r\n");
 
         match stream.write_all(request.as_bytes()) {

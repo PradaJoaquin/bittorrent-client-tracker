@@ -84,6 +84,18 @@ impl AtomicTorrentStatus {
             .count())
     }
 
+    /// Returns the number of pieces that are currently downloading.
+    ///
+    /// # Errors
+    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
+    pub fn current_downloading_pieces(&self) -> Result<usize, AtomicTorrentStatusError> {
+        Ok(self
+            .lock_pieces_status()?
+            .values()
+            .filter(|status| **status == PieceStatus::Downloading)
+            .count())
+    }
+
     /// Adds a new peer to the current number of peers.
     ///
     /// # Errors
@@ -98,7 +110,7 @@ impl AtomicTorrentStatus {
     /// # Errors
     /// - `PoisonedCurrentPeersLock` if the lock on the `current_peers` field is poisoned.
     /// - `NoPeersConnected` if there are no peers connected.
-    pub fn peer_diconnected(&self) -> Result<(), AtomicTorrentStatusError> {
+    pub fn peer_disconnected(&self) -> Result<(), AtomicTorrentStatusError> {
         let mut current_peers = self.lock_current_peers()?;
         if *current_peers == 0 {
             return Err(AtomicTorrentStatusError::NoPeersConnected);
@@ -268,7 +280,7 @@ mod tests {
         let status = AtomicTorrentStatus::new(&torrent);
         status.peer_connected().unwrap();
         status.peer_connected().unwrap();
-        status.peer_diconnected().unwrap();
+        status.peer_disconnected().unwrap();
         assert_eq!(1, status.current_peers().unwrap());
     }
 
@@ -277,7 +289,7 @@ mod tests {
         let torrent = create_test_torrent("test_peer_disconnected_error");
 
         let status = AtomicTorrentStatus::new(&torrent);
-        assert!(status.peer_diconnected().is_err());
+        assert!(status.peer_disconnected().is_err());
     }
 
     #[test]
