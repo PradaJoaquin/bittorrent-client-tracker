@@ -10,13 +10,14 @@ pub struct Info {
     pub pieces: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum FromInfoError {
     MissingLength,
     MissingName,
     MissingPieceLength,
     MissingPieces,
     NotADict,
+    MultipleFilesNotSupported,
 }
 
 impl Info {
@@ -40,6 +41,8 @@ impl Info {
                 piece_length = Info::create_piece_length(v)?;
             } else if k == b"pieces" {
                 pieces = Info::create_pieces(v)?;
+            } else if k == b"files" {
+                return Err(FromInfoError::MultipleFilesNotSupported);
             }
         }
 
@@ -129,5 +132,18 @@ mod tests {
         assert_eq!(response.name, "test1");
         assert_eq!(response.piece_length, 2);
         assert_eq!(response.pieces, b"test2");
+    }
+
+    #[test]
+    fn test_from_info_with_multiple_files() {
+        let mut info = BTreeMap::new();
+        info.insert(b"name".to_vec(), Bencode::BString(b"test1".to_vec()));
+        info.insert(b"piece length".to_vec(), Bencode::BNumber(2));
+        info.insert(b"pieces".to_vec(), Bencode::BString(b"test2".to_vec()));
+        info.insert(b"files".to_vec(), Bencode::BList(vec![]));
+        let bencode = Bencode::BDict(info);
+
+        let response = Info::from(&bencode).unwrap_err();
+        assert_eq!(response, FromInfoError::MultipleFilesNotSupported);
     }
 }

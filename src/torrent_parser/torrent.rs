@@ -5,7 +5,7 @@ use sha1::{Digest, Sha1};
 
 use crate::encoder_decoder::bencode::{Bencode, ToBencode};
 
-use super::info::Info;
+use super::info::{FromInfoError, Info};
 
 #[derive(Debug, Clone)]
 pub struct Torrent {
@@ -18,6 +18,7 @@ pub struct Torrent {
 pub enum FromTorrentError {
     MissingAnnounce,
     MissingInfo,
+    FromInfoError(FromInfoError),
     InfoHashError,
     NotADict,
 }
@@ -75,7 +76,7 @@ impl Torrent {
     fn create_info(bencode: &Bencode) -> Result<Info, FromTorrentError> {
         let info = match Info::from(bencode) {
             Ok(x) => x,
-            Err(_) => return Err(FromTorrentError::MissingInfo),
+            Err(err) => return Err(FromTorrentError::FromInfoError(err)),
         };
 
         Ok(info)
