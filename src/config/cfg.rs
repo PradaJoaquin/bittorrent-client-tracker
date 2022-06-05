@@ -10,10 +10,11 @@ use super::constants;
 /// tcp_port: u16,
 /// log_directory: String,
 /// download_directory: String,
+#[derive(Debug)]
 pub struct Cfg {
-    tcp_port: u16,
-    log_directory: String,
-    download_directory: String,
+    pub tcp_port: u16,
+    pub log_directory: String,
+    pub download_directory: String,
 }
 
 impl Cfg {

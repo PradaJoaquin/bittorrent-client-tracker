@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use std::io;
+use std::sync::Arc;
 use std::{
     io::{Read, Write as IOWrite},
     net::TcpStream,
@@ -7,6 +8,7 @@ use std::{
 
 use sha1::{Digest, Sha1};
 
+use crate::torrent_handler::status::AtomicTorrentStatus;
 use crate::torrent_parser::torrent::Torrent;
 use crate::tracker::http::constants::PEER_ID;
 
@@ -35,16 +37,22 @@ pub struct PeerSession {
     bitfield: Bitfield,
     status: SessionStatus,
     piece: Vec<u8>,
+    torrent_status: Arc<AtomicTorrentStatus>,
 }
 
 impl PeerSession {
-    pub fn new(peer: BtPeer, torrent: Torrent) -> PeerSession {
+    pub fn new(
+        peer: BtPeer,
+        torrent: Torrent,
+        torrent_status: Arc<AtomicTorrentStatus>,
+    ) -> PeerSession {
         PeerSession {
             torrent,
             peer,
             bitfield: Bitfield::new(vec![]),
             status: SessionStatus::default(),
             piece: vec![],
+            torrent_status,
         }
     }
 
@@ -62,8 +70,6 @@ impl PeerSession {
         let handshake = self.send_handshake(&mut stream)?;
         println!("Received handshake: {:?}", handshake);
 
-        let total_pieces = (self.torrent.info.length / self.torrent.info.piece_length) as u32;
-
         loop {
             self.read_message_from_stream(&mut stream)?;
 
@@ -73,21 +79,21 @@ impl PeerSession {
 
             if !self.status.choked && self.status.interested {
                 println!("Requesting pieces...");
-                for piece_index in 0..total_pieces {
-                    let has_piece = self.bitfield.has_piece(piece_index);
-                    println!("Has piece {}: {:?}", piece_index, has_piece);
-
-                    if has_piece {
-                        println!("\n\n********* Downloading piece {}...", piece_index);
-                        self.download_piece(&mut stream, piece_index)?;
-                    }
+                loop {
+                    match self.torrent_status.select_piece(&self.bitfield).unwrap() {
+                        Some(piece_index) => {
+                            println!("\n\n********* Downloading piece {}...", piece_index);
+                            self.download_piece(&mut stream, piece_index)?
+                        }
+                        None => {
+                            println!("No pieces left to download in this peer");
+                            self.torrent_status.peer_diconnected().unwrap();
+                            break;
+                        }
+                    };
                 }
-                println!("\n\n********* Download complete!");
-                break;
             }
         }
-
-        Ok(())
     }
 
     /// Downloads a piece from the peer given the piece index.
@@ -98,21 +104,32 @@ impl PeerSession {
     ) -> Result<Vec<u8>, PeerSessionError> {
         self.piece = vec![]; // reset piece
 
-        let total_blocks_in_piece = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
-        println!(
-            "Total blocks for piece {}: {}",
-            piece_index, total_blocks_in_piece
-        );
+        if piece_index == 1006 {
+            self.request_piece(
+                piece_index,
+                0,
+                (self.torrent.info.length % self.torrent.info.piece_length) as u32,
+                stream,
+            )?;
+            self.read_message_from_stream(stream).unwrap();
+        } else {
+            let total_blocks_in_piece = self.torrent.info.piece_length as u32 / BLOCK_SIZE;
 
-        for block in 0..total_blocks_in_piece {
-            println!("Sending request: {}/{}", block, total_blocks_in_piece);
-            self.request_piece(piece_index, block * BLOCK_SIZE, BLOCK_SIZE, stream)?;
-            self.read_message_from_stream(stream)?;
+            for block in 0..total_blocks_in_piece {
+                self.request_piece(piece_index, block * BLOCK_SIZE, BLOCK_SIZE, stream)?;
+                while self.read_message_from_stream(stream)? != MessageId::Piece {
+                    continue;
+                }
+            }
         }
 
         self.validate_piece(&self.piece, piece_index);
         println!("Piece {} downloaded!", piece_index);
 
+        println!(
+            "********** PIECES REMAINING: {}",
+            self.torrent_status.remaining_pieces().unwrap()
+        );
         Ok(self.piece.clone())
     }
 
@@ -120,7 +137,10 @@ impl PeerSession {
     ///
     /// It returns an error if:
     /// - The message could not be read
-    fn read_message_from_stream(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
+    fn read_message_from_stream(
+        &mut self,
+        stream: &mut TcpStream,
+    ) -> Result<MessageId, PeerSessionError> {
         let mut length = [0; 4];
         let mut msg_type = [0; 1];
 
@@ -142,9 +162,10 @@ impl PeerSession {
 
         let message =
             Message::from_bytes(msg_type, &payload).map_err(PeerSessionError::FromMessageError)?;
+        let id = message.id.clone();
 
         self.handle_message(message);
-        Ok(())
+        Ok(id)
     }
 
     /// Sends a handshake to the peer and returns the handshake received from the peer.
@@ -206,7 +227,7 @@ impl PeerSession {
             MessageId::Unchoke => self.handle_unchoke(),
             MessageId::Bitfield => self.handle_bitfield(message),
             MessageId::Piece => self.handle_piece(message),
-            _ => todo!(),
+            _ => println!("Received message: {:?}", message),
         }
     }
 
@@ -225,7 +246,6 @@ impl PeerSession {
 
     /// Handles a piece message received from the peer.
     fn handle_piece(&mut self, message: Message) {
-        println!("Received piece");
         let block = &message.payload[8..];
 
         self.piece.append(&mut block.to_vec());
@@ -250,6 +270,9 @@ impl PeerSession {
 
         if real_piece_hash == res_piece_hash {
             println!("Piece {} hash matches!\n\n", piece_index);
+            self.torrent_status
+                .piece_downloaded(piece_index, self.piece.clone())
+                .unwrap();
         } else {
             println!("Piece {} hash does not match!", piece_index);
         }

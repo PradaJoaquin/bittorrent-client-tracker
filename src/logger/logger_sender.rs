@@ -1,4 +1,3 @@
-use super::logger_error::LoggerError;
 use std::sync::mpsc::Sender;
 use std::thread;
 
