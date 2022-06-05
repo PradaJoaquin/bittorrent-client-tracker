@@ -2,19 +2,26 @@ use std::fs::File;
 use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::time::Duration;
 
 use super::constants;
 
-/// Cfg struct containing the config file information, previusly created with Cfg::new.
+/// `Cfg` struct containing the config file information, previusly created with `Cfg::new`.
 ///
-/// tcp_port: u16,
-/// log_directory: String,
-/// download_directory: String,
-#[derive(Debug)]
+/// - `tcp_port`: port to listen for incoming connections,
+/// - `log_directory`: directory where the log files will be stored,
+/// - `download_directory`: directory where the downloaded files will be stored,
+/// - `pipelining_size`: number of request sent to a peer before waiting for the response,
+/// - `read_write_timeout`: timeout in seconds for the read and write operations to a peer,
+/// - `max_peers_per_torrent`: maximum number of simultaneous peers that a torrent can have,
+#[derive(Debug, Clone)]
 pub struct Cfg {
     pub tcp_port: u16,
     pub log_directory: String,
     pub download_directory: String,
+    pub pipelining_size: u32,
+    pub read_write_timeout: Duration,
+    pub max_peers_per_torrent: u32,
 }
 
 impl Cfg {
@@ -26,13 +33,19 @@ impl Cfg {
     /// - The path to the config file does not exist or could not be open/readed.
     /// - The confing file has wrong format.
     /// - A wrong config_name was in the config file.
-    /// - tcp_port setting is not a number in the config file.
+    /// - tcp_port setting is not a valid number in the config file.
+    /// - pipelining_size setting is not a valid number in the config file.
+    /// - read_write_timeout setting is not a valid number in the config file.
+    /// - max_peers_per_torrent setting is not a valid number in the config file.
     /// - Minimum number of correct settings were not reached.
     pub fn new(path: &str) -> io::Result<Self> {
         let mut cfg = Self {
             tcp_port: 0,
             log_directory: String::from(""),
             download_directory: String::from(""),
+            pipelining_size: 0,
+            read_write_timeout: Duration::from_secs(0),
+            max_peers_per_torrent: 0,
         };
 
         let file = File::open(path)?;
@@ -68,28 +81,102 @@ impl Cfg {
     fn load_setting(mut self, name: &str, value: &str) -> io::Result<Self> {
         match name {
             constants::TCP_PORT => {
-                let parse = value.parse::<u16>();
-                match parse {
-                    Err(_) => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            format!("Invalid config, TCP_PORT is not a number: {}", value),
-                        ));
-                    }
-                    Ok(parse) => {
-                        self.tcp_port = parse;
-                    }
-                }
+                self = self.load_tcp_port(value)?;
             }
             constants::LOG_DIRECTORY => self.log_directory = String::from(value),
 
             constants::DOWNLOAD_DIRECTORY => self.download_directory = String::from(value),
+
+            constants::PIPELINING_SIZE => {
+                self = self.load_pipelining_size(value)?;
+            }
+
+            constants::READ_WRITE_TIMEOUT => {
+                self = self.load_read_write_timeout(value)?;
+            }
+
+            constants::MAX_PEERS_PER_TORRENT => {
+                self = self.load_max_peers_per_torrent(value)?;
+            }
 
             _ => {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!("Invalid config setting name: {}", name),
                 ))
+            }
+        }
+        Ok(self)
+    }
+
+    fn load_tcp_port(mut self, value: &str) -> io::Result<Self> {
+        let parse = value.parse::<u16>();
+        match parse {
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Invalid config, TCP_PORT is not a valid number: {}", value),
+                ));
+            }
+            Ok(parse) => {
+                self.tcp_port = parse;
+            }
+        }
+        Ok(self)
+    }
+
+    fn load_pipelining_size(mut self, value: &str) -> io::Result<Self> {
+        let parse = value.parse::<u32>();
+        match parse {
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Invalid config, PIPELINING_SIZE is not a valid number: {}",
+                        value
+                    ),
+                ));
+            }
+            Ok(parse) => {
+                self.pipelining_size = parse;
+            }
+        }
+        Ok(self)
+    }
+
+    fn load_read_write_timeout(mut self, value: &str) -> io::Result<Self> {
+        let parse = value.parse::<u64>();
+        match parse {
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Invalid config, READ_WRITE_TIMEOUT is not a valid number: {}",
+                        value
+                    ),
+                ));
+            }
+            Ok(parse) => {
+                self.read_write_timeout = Duration::from_secs(parse);
+            }
+        }
+        Ok(self)
+    }
+
+    fn load_max_peers_per_torrent(mut self, value: &str) -> io::Result<Self> {
+        let parse = value.parse::<u32>();
+        match parse {
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Invalid config, MAX_PEERS_PER_TORRENT is not a valid number: {}",
+                        value
+                    ),
+                ));
+            }
+            Ok(parse) => {
+                self.max_peers_per_torrent = parse;
             }
         }
         Ok(self)
@@ -113,11 +200,11 @@ mod tests {
 
     #[test]
     fn test_good_config() {
-        let path = "./test_good_config.txt";
-        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download";
+        let path = "./test_good_config.cfg";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5";
         create_and_write_file(path, contents);
 
-        create_and_assert_config_is_ok(path, 1000, "./log", "./download");
+        create_and_assert_config_is_ok(path, 1000, "./log", "./download", 5, 120, 5);
     }
 
     #[test]
@@ -129,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_empty_file() {
-        let path = "./test_empty_file.txt";
+        let path = "./test_empty_file.cfg";
         let contents = b"";
         create_and_write_file(path, contents);
 
@@ -138,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_setting_doesnt_exist() {
-        let path = "./test_setting_doesnt_exist.txt";
+        let path = "./test_setting_doesnt_exist.cfg";
         let contents = b"WRONG_SETTING=1000";
         create_and_write_file(path, contents);
 
@@ -147,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_bad_number_of_settings() {
-        let path = "./test_bad_number_of_settings.txt";
+        let path = "./test_bad_number_of_settings.cfg";
         let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log";
         create_and_write_file(path, contents);
 
@@ -156,8 +243,35 @@ mod tests {
 
     #[test]
     fn test_tcp_port_not_a_number() {
-        let path = "./test_tcp_port_not_a_number.txt";
-        let contents = b"TCP_PORT=abcd\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download";
+        let path = "./test_tcp_port_not_a_number.cfg";
+        let contents = b"TCP_PORT=abcd\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5";
+        create_and_write_file(path, contents);
+
+        create_and_assert_config_is_not_ok(path);
+    }
+
+    #[test]
+    fn test_read_write_timeout_not_a_number() {
+        let path = "./test_read_write_timeout_not_a_number.cfg";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_TIMEOUT=2segundos\nMAX_PEERS_PER_TORRENT=5";
+        create_and_write_file(path, contents);
+
+        create_and_assert_config_is_not_ok(path);
+    }
+
+    #[test]
+    fn test_pipelining_not_a_number() {
+        let path = "./test_pipelining_not_a_number.cfg";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=muy_grande\nREAD_WRITE_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5";
+        create_and_write_file(path, contents);
+
+        create_and_assert_config_is_not_ok(path);
+    }
+
+    #[test]
+    fn test_max_peers_not_a_number() {
+        let path = "./test_max_peers_not_a_number.cfg";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=un_millon";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -165,17 +279,17 @@ mod tests {
 
     #[test]
     fn test_order_doesnt_matter() {
-        let path = "./test_order_doesnt_matter.txt";
-        let contents = b"LOG_DIRECTORY=./log2\nDOWNLOAD_DIRECTORY=./download2\nTCP_PORT=2500";
+        let path = "./test_order_doesnt_matter.cfg";
+        let contents = b"LOG_DIRECTORY=./log2\nDOWNLOAD_DIRECTORY=./download2\nTCP_PORT=2500\nREAD_WRITE_TIMEOUT=10\nMAX_PEERS_PER_TORRENT=1\nPIPELINING_SIZE=10";
         create_and_write_file(path, contents);
 
-        create_and_assert_config_is_ok(path, 2500, "./log2", "./download2");
+        create_and_assert_config_is_ok(path, 2500, "./log2", "./download2", 10, 10, 1);
     }
 
     #[test]
     fn test_bad_format() {
-        let path = "./test_bad_format.txt";
-        let contents = b"TCP_PORT=abcd=1234\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download";
+        let path = "./test_bad_format.cfg";
+        let contents = b"TCP_PORT=abcd=1234\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -195,6 +309,9 @@ mod tests {
         tcp_port: u16,
         log_directory: &str,
         download_directory: &str,
+        pipelining_size: u32,
+        read_write_timeout: u64,
+        max_peers_per_torrent: u32,
     ) {
         let config = Cfg::new(path);
 
@@ -205,6 +322,12 @@ mod tests {
         assert_eq!(config.tcp_port, tcp_port);
         assert_eq!(config.log_directory, log_directory);
         assert_eq!(config.download_directory, download_directory);
+        assert_eq!(config.pipelining_size, pipelining_size);
+        assert_eq!(
+            config.read_write_timeout,
+            Duration::from_secs(read_write_timeout)
+        );
+        assert_eq!(config.max_peers_per_torrent, max_peers_per_torrent);
 
         fs::remove_file(path).expect(&format!("Error removing file in path: {}", &path));
     }
