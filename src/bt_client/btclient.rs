@@ -129,9 +129,14 @@ impl BtClient {
         torrents_directory: String,
     ) -> Result<Vec<Torrent>, BtClientError> {
         let torrents: Vec<Torrent> =
-            Self::list_torrent_filenames_in_directory(&log_sender, torrents_directory)?
+            Self::list_torrent_filenames_in_directory(&log_sender, torrents_directory.clone())?
                 .iter()
-                .filter_map(|filename| Self::parse_torrent(&log_sender, filename))
+                .filter_map(|filename| {
+                    Self::parse_torrent(
+                        &log_sender,
+                        &format!("{}/{}", torrents_directory, filename),
+                    )
+                })
                 .collect();
 
         Ok(torrents)
