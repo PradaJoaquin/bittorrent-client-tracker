@@ -1,3 +1,4 @@
+pub mod bt_client;
 pub mod config;
 pub mod encoder_decoder;
 pub mod graphic_interface;

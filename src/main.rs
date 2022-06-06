@@ -1,13 +1,22 @@
+use bit_torrent_rustico::bt_client::btclient::BtClient;
+use bit_torrent_rustico::bt_client::btclient_error::BtClientError;
+use bit_torrent_rustico::bt_client::error_message::ErrorMessage;
+use core::time;
 use std::env;
+use std::thread::sleep;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        panic!(
-            "Wrong number of arguments: {}. Only a directory path containing one or more torrents should be passed",
-            (args.len() - 1)
-        );
-    }
+fn main() -> Result<(), BtClientError> {
+    let arguments: Vec<String> = env::args().collect();
+    if arguments.len() != 2 {
+        return Err(BtClientError::ArgumentError(ErrorMessage::new(
+            "Incorrect number of arguments. Only a directory path containing one or more torrents should be passed".to_string(),
+        )));
+    };
+    let client = BtClient::init(arguments[1].clone());
+    sleep(time::Duration::from_millis(200));
+    let client = client?;
 
-    //bt_client::init(args[1])
+    client.run();
+
+    Ok(())
 }

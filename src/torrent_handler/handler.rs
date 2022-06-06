@@ -96,7 +96,7 @@ impl TorrentHandler {
             }
         }
 
-        println!("Torrent terminado!");
+        println!("Torrent terminado! {}", self.torrent.info.name);
 
         Ok(())
     }

@@ -109,6 +109,10 @@ impl Torrent {
             .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
             .collect()
     }
+
+    pub fn name(&self) -> String {
+        self.info.name.clone()
+    }
 }
 
 impl ToBencode for Torrent {
