@@ -113,6 +113,22 @@ impl Torrent {
     pub fn name(&self) -> String {
         self.info.name.clone()
     }
+
+    pub fn piece_length(&self) -> u32 {
+        self.info.piece_length as u32
+    }
+
+    pub fn length(&self) -> u32 {
+        self.info.length as u32
+    }
+
+    pub fn total_pieces(&self) -> u32 {
+        (self.info.length as f64 / self.info.piece_length as f64).ceil() as u32
+    }
+
+    pub fn last_piece_size(&self) -> u32 {
+        self.info.length as u32 % self.info.piece_length as u32
+    }
 }
 
 impl ToBencode for Torrent {

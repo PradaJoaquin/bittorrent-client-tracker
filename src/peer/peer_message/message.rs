@@ -24,7 +24,7 @@ pub struct Message {
 }
 
 #[derive(Debug)]
-pub enum FromMessageError {
+pub enum MessageError {
     InvalidMessage,
 }
 
@@ -35,7 +35,7 @@ impl Message {
     }
 
     /// Parses a byte array into a `Message`.
-    pub fn from_bytes(msg_type: [u8; 1], payload: &[u8]) -> Result<Self, FromMessageError> {
+    pub fn from_bytes(msg_type: [u8; 1], payload: &[u8]) -> Result<Self, MessageError> {
         let id = match msg_type[0] {
             0 => MessageId::Choke,
             1 => MessageId::Unchoke,
@@ -47,7 +47,7 @@ impl Message {
             7 => MessageId::Piece,
             8 => MessageId::Cancel,
             9 => MessageId::Port,
-            _ => return Err(FromMessageError::InvalidMessage),
+            _ => return Err(MessageError::InvalidMessage),
         };
 
         Ok(Self {

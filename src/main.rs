@@ -13,10 +13,14 @@ fn main() -> Result<(), BtClientError> {
         )));
     };
     let client = BtClient::init(arguments[1].clone());
+
+    // sleeps temporales hasta solucionar Issue: https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/issues/67
+
     sleep(time::Duration::from_millis(200));
     let client = client?;
 
     client.run();
+    sleep(time::Duration::from_millis(200));
 
     Ok(())
 }

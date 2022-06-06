@@ -46,31 +46,21 @@ impl TorrentHandler {
     /// - `TrackerErr` if there was a problem connecting to the tracker or getting the peers.
     /// - `TorrentStatusError` if there was a problem using the `Torrent Status`.
     pub fn handle(&mut self) -> Result<(), TorrentHandlerError> {
-        // Inicializar Torrent Server con self.config.tcp_port
-
-        // self.logger_sender.info("Servidor inicializado");
+        // TODO: Inicializar Torrent Server con self.config.tcp_port
 
         let tracker_handler =
             TrackerHandler::new(self.torrent.clone(), self.config.tcp_port.into())
                 .map_err(TorrentHandlerError::TrackerError)?;
+        self.logger_sender.info("Connected to tracker.");
 
         while !self.torrent_download_finished()? {
-            let tracker_response = tracker_handler
-                .get_peers_list()
-                .map_err(TorrentHandlerError::TrackerError)?;
+            let peer_list = self.get_peers_list(&tracker_handler)?;
+            self.logger_sender.info("Tracker peer list obteined.");
 
             // Iniciar conección con cada peer
-            for peer in tracker_response.peers {
-                let mut current_peers = self
-                    .torrent_status
-                    .current_peers()
-                    .map_err(TorrentHandlerError::TorrentStatusError)?;
-
-                let mut remaining_pieces = self
-                    .torrent_status
-                    .remaining_pieces()
-                    .map_err(TorrentHandlerError::TorrentStatusError)?;
-
+            for peer in peer_list {
+                let mut current_peers = self.current_peers()?;
+                let mut remaining_pieces = self.remaining_pieces()?;
                 let mut is_finished = self.torrent_download_finished()?;
 
                 // Si se llego  máximo de peers simultaneos esperar hasta que se libere uno
@@ -80,30 +70,42 @@ impl TorrentHandler {
                 {
                     thread::yield_now();
 
-                    current_peers = self
-                        .torrent_status
-                        .current_peers()
-                        .map_err(TorrentHandlerError::TorrentStatusError)?;
-
-                    remaining_pieces = self
-                        .torrent_status
-                        .remaining_pieces()
-                        .map_err(TorrentHandlerError::TorrentStatusError)?;
-
+                    current_peers = self.current_peers()?;
+                    remaining_pieces = self.remaining_pieces()?;
                     is_finished = self.torrent_download_finished()?;
                 }
                 self.connect_to_peer(peer)?;
             }
         }
-
-        println!("Torrent terminado! {}", self.torrent.info.name);
-
+        self.logger_sender.info("Torrent download finished.");
         Ok(())
+    }
+
+    fn get_peers_list(
+        &self,
+        tracker_handler: &TrackerHandler,
+    ) -> Result<Vec<BtPeer>, TorrentHandlerError> {
+        let tracker_response = tracker_handler
+            .get_peers_list()
+            .map_err(TorrentHandlerError::TrackerError)?;
+        Ok(tracker_response.peers)
     }
 
     fn torrent_download_finished(&mut self) -> Result<bool, TorrentHandlerError> {
         self.torrent_status
             .is_finished()
+            .map_err(TorrentHandlerError::TorrentStatusError)
+    }
+
+    fn current_peers(&mut self) -> Result<usize, TorrentHandlerError> {
+        self.torrent_status
+            .current_peers()
+            .map_err(TorrentHandlerError::TorrentStatusError)
+    }
+
+    fn remaining_pieces(&mut self) -> Result<usize, TorrentHandlerError> {
+        self.torrent_status
+            .remaining_pieces()
             .map_err(TorrentHandlerError::TorrentStatusError)
     }
 
@@ -119,6 +121,7 @@ impl TorrentHandler {
             self.torrent.clone(),
             self.torrent_status.clone(),
             self.config.clone(),
+            self.logger_sender.clone(),
         );
 
         let builder = thread::Builder::new().name(format!(
@@ -130,12 +133,12 @@ impl TorrentHandler {
         let join = builder.spawn(move || match peer_session.start() {
             Ok(_) => (),
             Err(err) => {
-                peer_logger_sender.warn(&format!("Error: {:?}", err));
+                peer_logger_sender.warn(&format!("{:?}", err));
             }
         });
         match join {
             Ok(_) => (),
-            Err(err) => self.logger_sender.error(&format!("Error: {:?}", err)),
+            Err(err) => self.logger_sender.error(&format!("{:?}", err)),
         }
         Ok(())
     }

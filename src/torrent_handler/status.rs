@@ -90,11 +90,23 @@ impl AtomicTorrentStatus {
     ///
     /// # Errors
     /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
-    pub fn current_downloading_pieces(&self) -> Result<usize, AtomicTorrentStatusError> {
+    pub fn downloading_pieces(&self) -> Result<usize, AtomicTorrentStatusError> {
         Ok(self
             .lock_pieces_status()?
             .values()
             .filter(|status| **status == PieceStatus::Downloading)
+            .count())
+    }
+
+    /// Returns the number of pieces that are already downloaded.
+    ///
+    /// # Errors
+    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
+    pub fn downloaded_pieces(&self) -> Result<usize, AtomicTorrentStatusError> {
+        Ok(self
+            .lock_pieces_status()?
+            .values()
+            .filter(|status| **status == PieceStatus::Finished)
             .count())
     }
 
@@ -450,6 +462,36 @@ mod tests {
 
         assert_eq!(remaining_starting_pieces, total_pieces);
         assert_eq!(status.remaining_pieces().unwrap(), total_pieces - 1);
+        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
+    }
+
+    #[test]
+    fn test_downloading_pieces() {
+        let torrent = create_test_torrent("test_downloading_pieces");
+
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+
+        let _ = status
+            .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(status.downloading_pieces().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_downloaded_pieces() {
+        let torrent = create_test_torrent("test_downloaded_pieces");
+
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+
+        let index = status
+            .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
+            .unwrap()
+            .unwrap();
+        status.piece_downloaded(index, vec![]).unwrap();
+
+        assert_eq!(status.downloaded_pieces().unwrap(), 1);
         fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 

@@ -93,7 +93,7 @@ impl BtClient {
         let config = self.config.clone();
         let logger = self.logger.new_sender();
 
-        let builder = thread::Builder::new().name(format!("TORRENT HANDLER: {}", torrent.name()));
+        let builder = thread::Builder::new().name(format!("Torrent handler: {}", torrent.name()));
         builder.spawn(move || {
             let mut handler = TorrentHandler::new(torrent, config, logger.clone());
             if let Err(torrent_error) = handler.handle() {
