@@ -1,7 +1,6 @@
 use std::fmt::Write;
 use std::io;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{
     io::{Read, Write as IOWrite},
     net::TcpStream,
@@ -9,6 +8,7 @@ use std::{
 
 use sha1::{Digest, Sha1};
 
+use crate::config::cfg::Cfg;
 use crate::torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
 use crate::torrent_parser::torrent::Torrent;
 use crate::tracker::http::constants::PEER_ID;
@@ -19,8 +19,6 @@ use super::peer_message::{Bitfield, FromMessageError, Message, MessageId, Reques
 use super::session_status::SessionStatus;
 
 const BLOCK_SIZE: u32 = 16384;
-const PIPELINING_SIZE: u32 = 5;
-const READ_WRITE_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug)]
 pub enum PeerSessionError {
@@ -48,6 +46,7 @@ pub struct PeerSession {
     piece: Vec<u8>,
     torrent_status: Arc<AtomicTorrentStatus>,
     current_piece: u32,
+    config: Cfg,
 }
 
 impl PeerSession {
@@ -55,6 +54,7 @@ impl PeerSession {
         peer: BtPeer,
         torrent: Torrent,
         torrent_status: Arc<AtomicTorrentStatus>,
+        config: Cfg,
     ) -> PeerSession {
         PeerSession {
             torrent,
@@ -64,6 +64,7 @@ impl PeerSession {
             piece: vec![],
             torrent_status,
             current_piece: 0,
+            config,
         }
     }
 
@@ -96,11 +97,11 @@ impl PeerSession {
         // set timeouts
 
         stream
-            .set_read_timeout(Some(READ_WRITE_TIMEOUT))
+            .set_read_timeout(Some(self.config.read_write_timeout))
             .map_err(|_| PeerSessionError::HandshakeError)?;
 
         stream
-            .set_write_timeout(Some(READ_WRITE_TIMEOUT))
+            .set_write_timeout(Some(self.config.read_write_timeout))
             .map_err(|_| PeerSessionError::HandshakeError)?;
 
         let handshake = self.send_handshake(&mut stream)?;
@@ -203,12 +204,14 @@ impl PeerSession {
 
         let mut blocks_downloaded = 0;
         while blocks_downloaded < entire_blocks_in_piece {
-            let blocks_to_download =
-                if (entire_blocks_in_piece - blocks_downloaded) % PIPELINING_SIZE == 0 {
-                    PIPELINING_SIZE
-                } else {
-                    entire_blocks_in_piece - blocks_downloaded
-                };
+            let blocks_to_download = if (entire_blocks_in_piece - blocks_downloaded)
+                % self.config.pipelining_size
+                == 0
+            {
+                self.config.pipelining_size
+            } else {
+                entire_blocks_in_piece - blocks_downloaded
+            };
 
             // request blocks
             for block in 0..blocks_to_download {

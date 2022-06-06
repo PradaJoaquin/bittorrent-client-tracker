@@ -1,7 +1,4 @@
-use super::{
-    constants,
-    status::{AtomicTorrentStatus, AtomicTorrentStatusError},
-};
+use super::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
 use crate::{
     config::cfg::Cfg,
     logger::logger_sender::LoggerSender,
@@ -77,7 +74,7 @@ impl TorrentHandler {
                 let mut is_finished = self.torrent_download_finished()?;
 
                 // Si se llego  máximo de peers simultaneos esperar hasta que se libere uno
-                while (current_peers >= constants::MAX_CURRENT_PEERS
+                while (current_peers >= self.config.max_peers_per_torrent as usize
                     || current_peers >= remaining_pieces)
                     && !is_finished
                 {
@@ -119,8 +116,12 @@ impl TorrentHandler {
 
         let peer_name_clone = peer_name.clone();
 
-        let mut peer_session =
-            PeerSession::new(peer, self.torrent.clone(), self.torrent_status.clone());
+        let mut peer_session = PeerSession::new(
+            peer,
+            self.torrent.clone(),
+            self.torrent_status.clone(),
+            self.config.clone(),
+        );
 
         let builder = thread::Builder::new().name(format!(
             "Torrent: {} / Peer: {}",
