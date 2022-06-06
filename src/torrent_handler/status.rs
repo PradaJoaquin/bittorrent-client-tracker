@@ -178,8 +178,6 @@ impl AtomicTorrentStatus {
             }
             None => return Err(AtomicTorrentStatusError::InvalidPieceIndex),
         }
-        piece_status.insert(index, PieceStatus::Finished);
-
         save_piece(
             self.torrent.info.name.clone(),
             &piece,
@@ -187,6 +185,8 @@ impl AtomicTorrentStatus {
             self.config.clone(),
         )
         .map_err(AtomicTorrentStatusError::SavePieceError)?;
+
+        piece_status.insert(index, PieceStatus::Finished);
         Ok(())
     }
 

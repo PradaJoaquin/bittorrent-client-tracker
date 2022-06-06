@@ -188,14 +188,13 @@ impl PeerSession {
         let entire_blocks_in_piece = if piece_index != last_piece {
             self.torrent.info.piece_length as u32 / BLOCK_SIZE
         } else {
-            let last_piece_size =
-                (self.torrent.info.length % self.torrent.info.piece_length) as u32 / BLOCK_SIZE;
+            let last_piece_size = self.torrent.info.length % self.torrent.info.piece_length;
 
             // If the last piece is multiple of the piece length, then is the same as the other pieces.
             if last_piece_size == 0 {
                 self.torrent.info.piece_length as u32 / BLOCK_SIZE
             } else {
-                last_piece_size
+                (last_piece_size as f64 / BLOCK_SIZE as f64).floor() as u32
             }
         };
 
