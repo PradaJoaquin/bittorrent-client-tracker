@@ -1,6 +1,8 @@
 use std::sync::mpsc::Sender;
 use std::thread;
 
+use chrono::Local;
+
 /// A LoggerSender representing the sender channel connected to a Logger
 ///
 /// There are three ways to write to the log:
@@ -25,8 +27,8 @@ impl LoggerSender {
     /// It prints an error if:
     /// - Couldn't send the information to the receiver
     pub fn info(&self, value: &str) {
-        let formated_value = format!("[{}] [INFO] - {}", self.get_thread_name(), value);
-        self.send(formated_value)
+        let formatted_msg = self.format_msg(value, "INFO");
+        self.send(formatted_msg)
     }
 
     /// Writes a Warn type log to the connected logger
@@ -34,8 +36,8 @@ impl LoggerSender {
     /// It prints an error if:
     /// - Couldn't send the information to the receiver
     pub fn warn(&self, value: &str) {
-        let formated_value = format!("[{}] [WARN] - {}", self.get_thread_name(), value);
-        self.send(formated_value)
+        let formatted_msg = self.format_msg(value, "WARN");
+        self.send(formatted_msg)
     }
 
     /// Writes an Error type log to the connected logger
@@ -43,8 +45,8 @@ impl LoggerSender {
     /// It prints an error if:
     /// - Couldn't send the information to the receiver
     pub fn error(&self, value: &str) {
-        let formated_value = format!("[{}] [ERROR] - {}", self.get_thread_name(), value);
-        self.send(formated_value)
+        let formatted_msg = self.format_msg(value, "ERROR");
+        self.send(formatted_msg)
     }
 
     fn send(&self, value: String) {
@@ -62,5 +64,17 @@ impl LoggerSender {
             Some(name) => name.to_string(),
             None => "unnamed-thread".to_string(),
         }
+    }
+
+    fn format_msg(&self, value: &str, log_type: &str) -> String {
+        let time = Local::now();
+        let time_formated = time.format("[%Y/%m/%d %H:%M:%S]");
+        return format!(
+            "[{}] [{}] [{}] - {}\n",
+            time_formated,
+            self.get_thread_name(),
+            log_type,
+            value
+        );
     }
 }

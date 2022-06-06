@@ -67,12 +67,7 @@ impl Logger {
             let mut file = file;
 
             while let Ok(msg) = receiver.recv() {
-                let msg: String = msg;
-                let time = Local::now();
-                let formated =
-                    format!("{} {}\n", time.format("[%Y/%m/%d %H:%M:%S]"), msg).into_bytes();
-
-                match file.write_all(&formated) {
+                match file.write_all(msg.as_bytes()) {
                     Ok(_) => {}
                     Err(err) => eprintln!("Error({err}) writing to the log"),
                 }
