@@ -30,7 +30,7 @@ impl TorrentHandler {
     /// Creates a new `TorrentHandler` from a torrent, a config and a logger sender.
     pub fn new(torrent: Torrent, config: Cfg, logger_sender: LoggerSender) -> Self {
         Self {
-            torrent_status: Arc::new(AtomicTorrentStatus::new(&torrent)),
+            torrent_status: Arc::new(AtomicTorrentStatus::new(&torrent, config.clone())),
             torrent,
             config,
             logger_sender,

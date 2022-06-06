@@ -1,5 +1,5 @@
 use crate::{
-    peer::peer_message::Bitfield, storage_manager::manager::save_piece,
+    config::cfg::Cfg, peer::peer_message::Bitfield, storage_manager::manager::save_piece,
     torrent_parser::torrent::Torrent,
 };
 use std::{
@@ -22,6 +22,7 @@ pub struct AtomicTorrentStatus {
     torrent: Torrent,
     pieces_status: Mutex<HashMap<u32, PieceStatus>>,
     current_peers: Mutex<usize>,
+    config: Cfg,
 }
 
 /// Possible states of a piece.
@@ -45,7 +46,7 @@ pub enum AtomicTorrentStatusError {
 
 impl AtomicTorrentStatus {
     /// Creates a new `AtomicTorrentStatus` from a `Torrent`.
-    pub fn new(torrent: &Torrent) -> Self {
+    pub fn new(torrent: &Torrent, config: Cfg) -> Self {
         let mut pieces_status: HashMap<u32, PieceStatus> = HashMap::new();
 
         for index in
@@ -58,6 +59,7 @@ impl AtomicTorrentStatus {
             torrent: torrent.clone(),
             pieces_status: Mutex::new(pieces_status),
             current_peers: Mutex::new(0),
+            config,
         }
     }
 
@@ -182,6 +184,7 @@ impl AtomicTorrentStatus {
             self.torrent.info.name.clone(),
             &piece,
             (index * self.torrent.info.piece_length as u32) as u64,
+            self.config.clone(),
         )
         .map_err(AtomicTorrentStatusError::SavePieceError)?;
         Ok(())
@@ -232,11 +235,13 @@ mod tests {
 
     use super::*;
 
+    const CONFIG_PATH: &str = "config.cfg";
+
     #[test]
     fn test_is_not_finished() {
         let torrent = create_test_torrent("test_is_not_finished");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         assert!(!status.is_finished().unwrap());
     }
 
@@ -244,7 +249,7 @@ mod tests {
     fn test_is_finished() {
         let torrent = create_test_torrent("test_is_finished");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         for _ in 0..(torrent.info.length / torrent.info.piece_length) {
             let index = status
                 .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
@@ -253,14 +258,14 @@ mod tests {
             status.piece_downloaded(index as u32, vec![]).unwrap();
         }
         assert!(status.is_finished().unwrap());
-        fs::remove_file(torrent.info.name).unwrap();
+        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
     #[test]
     fn test_starting_current_peers() {
         let torrent = create_test_torrent("test_starting_current_peers");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         assert_eq!(0, status.current_peers().unwrap());
     }
 
@@ -268,7 +273,7 @@ mod tests {
     fn test_peer_connected() {
         let torrent = create_test_torrent("test_peer_connected");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         status.peer_connected().unwrap();
         assert_eq!(1, status.current_peers().unwrap());
     }
@@ -277,7 +282,7 @@ mod tests {
     fn test_peer_disconnected() {
         let torrent = create_test_torrent("test_peer_disconnected");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         status.peer_connected().unwrap();
         status.peer_connected().unwrap();
         status.peer_disconnected().unwrap();
@@ -288,7 +293,7 @@ mod tests {
     fn test_peer_disconnected_error() {
         let torrent = create_test_torrent("test_peer_disconnected_error");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         assert!(status.peer_disconnected().is_err());
     }
 
@@ -296,7 +301,7 @@ mod tests {
     fn test_select_piece() {
         let torrent = create_test_torrent("test_piece_downloaded");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
@@ -311,7 +316,7 @@ mod tests {
     fn test_no_pieces_to_select() {
         let torrent = create_test_torrent("test_no_pieces_to_select");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         let index = status
             .select_piece(&Bitfield::new(vec![0b00000000, 0b00000000]))
             .unwrap();
@@ -322,7 +327,7 @@ mod tests {
     fn test_piece_downloaded() {
         let torrent = create_test_torrent("test_piece_downloaded");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
@@ -332,14 +337,14 @@ mod tests {
             *status.pieces_status.lock().unwrap().get(&index).unwrap(),
             PieceStatus::Finished
         );
-        fs::remove_file(torrent.info.name).unwrap();
+        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
     #[test]
     fn test_piece_aborted() {
         let torrent = create_test_torrent("test_piece_aborted");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
@@ -355,7 +360,7 @@ mod tests {
     fn test_bad_index() {
         let torrent = create_test_torrent("test_bad_index");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         let index = 1000;
         assert!(status.piece_downloaded(index, vec![]).is_err());
     }
@@ -364,7 +369,10 @@ mod tests {
     fn test_multiple_threads_current_peers() {
         let torrent = create_test_torrent("test_multiple_threads");
 
-        let status = Arc::new(AtomicTorrentStatus::new(&torrent));
+        let status = Arc::new(AtomicTorrentStatus::new(
+            &torrent,
+            Cfg::new(CONFIG_PATH).unwrap(),
+        ));
         let mut joins = Vec::new();
 
         for _ in 0..10 {
@@ -382,7 +390,10 @@ mod tests {
     fn test_multiple_threads_piece_status() {
         let torrent = create_test_torrent("test_multiple_threads_piece_status");
 
-        let status = Arc::new(AtomicTorrentStatus::new(&torrent));
+        let status = Arc::new(AtomicTorrentStatus::new(
+            &torrent,
+            Cfg::new(CONFIG_PATH).unwrap(),
+        ));
         let mut joins = Vec::new();
 
         for _ in 0..10 {
@@ -400,14 +411,14 @@ mod tests {
             join.join().unwrap();
         }
         assert!(status.is_finished().unwrap());
-        fs::remove_file(torrent.info.name).unwrap();
+        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
     #[test]
     fn test_bad_downloaded() {
         let torrent = create_test_torrent("test_bad_downloaded");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         let index = 0;
         assert!(status.piece_downloaded(index, vec![]).is_err());
     }
@@ -416,7 +427,7 @@ mod tests {
     fn test_bad_abort() {
         let torrent = create_test_torrent("test_bad_abort");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         let index = 0;
         assert!(status.piece_aborted(index).is_err());
     }
@@ -425,7 +436,7 @@ mod tests {
     fn test_remaining_pieces() {
         let torrent = create_test_torrent("test_remaining_pieces");
 
-        let status = AtomicTorrentStatus::new(&torrent);
+        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
 
         let total_pieces = (torrent.info.length / torrent.info.piece_length) as usize;
 
@@ -439,7 +450,7 @@ mod tests {
 
         assert_eq!(remaining_starting_pieces, total_pieces);
         assert_eq!(status.remaining_pieces().unwrap(), total_pieces - 1);
-        fs::remove_file(torrent.info.name).unwrap();
+        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
     // Auxiliary functions

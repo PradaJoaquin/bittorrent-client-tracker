@@ -11,3 +11,6 @@ Cargo.lock
 *.idea
 *.torrent
 *.log
+
+# Default downloads directory
+/downloads
