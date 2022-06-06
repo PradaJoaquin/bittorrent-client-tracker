@@ -33,6 +33,8 @@ pub enum PeerSessionError {
     ErrorGettingCurrentDownloadingPieces(AtomicTorrentStatusError),
     ErrorGettingRemainingPieces(AtomicTorrentStatusError),
     ErrorNotifyingPieceDownloaded(AtomicTorrentStatusError),
+    PieceHashDoesNotMatch,
+    NoPiecesLeftToDownloadInThisPeer,
 }
 
 /// A PeerSession represents a connection to a peer.
@@ -80,9 +82,6 @@ impl PeerSession {
                 self.torrent_status
                     .peer_disconnected()
                     .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
-                self.torrent_status
-                    .piece_aborted(self.current_piece)
-                    .map_err(PeerSessionError::ErrorAbortingPiece)?;
                 Err(e)
             }
         }
@@ -139,15 +138,11 @@ impl PeerSession {
                                 "\n\n********* Error downloading piece {}: {:?}",
                                 piece_index, e
                             );
-
-                            self.torrent_status
-                                .peer_disconnected()
-                                .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
                             self.torrent_status
                                 .piece_aborted(piece_index)
                                 .map_err(PeerSessionError::ErrorAbortingPiece)?;
 
-                            panic!("ERROR");
+                            return Err(e);
                         }
                     }
                 }
@@ -163,11 +158,7 @@ impl PeerSession {
                         current_downloading_pieces
                     );
 
-                    self.torrent_status
-                        .peer_disconnected()
-                        .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
-
-                    panic!("ERROR");
+                    return Err(PeerSessionError::NoPiecesLeftToDownloadInThisPeer);
                 }
             };
         }
@@ -402,18 +393,11 @@ impl PeerSession {
             self.torrent_status
                 .piece_downloaded(piece_index, self.piece.clone())
                 .map_err(PeerSessionError::ErrorNotifyingPieceDownloaded)?;
+            Ok(())
         } else {
             println!("Piece {} hash does not match!", piece_index);
-            self.torrent_status
-                .peer_disconnected()
-                .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
-            self.torrent_status
-                .piece_aborted(piece_index)
-                .map_err(PeerSessionError::ErrorAbortingPiece)?;
-            panic!("MAL PEER, me pasaste mal la pieza");
+            Err(PeerSessionError::PieceHashDoesNotMatch)
         }
-
-        Ok(())
     }
 
     /// Converts a byte array to a hex string.

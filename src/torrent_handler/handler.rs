@@ -114,8 +114,6 @@ impl TorrentHandler {
 
         let peer_name = format!("{}:{}", peer.ip, peer.port);
 
-        let peer_name_clone = peer_name.clone();
-
         let mut peer_session = PeerSession::new(
             peer,
             self.torrent.clone(),
@@ -132,15 +130,12 @@ impl TorrentHandler {
         let join = builder.spawn(move || match peer_session.start() {
             Ok(_) => (),
             Err(err) => {
-                peer_logger_sender
-                    .error(&format!("Error: {:?}, with peer: {}", err, peer_name_clone));
+                peer_logger_sender.warn(&format!("Error: {:?}", err));
             }
         });
         match join {
             Ok(_) => (),
-            Err(err) => self
-                .logger_sender
-                .error(&format!("Error: {:?}, with peer: {}", err, peer_name)),
+            Err(err) => self.logger_sender.error(&format!("Error: {:?}", err)),
         }
         Ok(())
     }
