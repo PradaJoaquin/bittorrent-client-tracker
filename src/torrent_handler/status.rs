@@ -4,7 +4,10 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    sync::{Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex, MutexGuard,
+    },
 };
 
 /// A Struct that represents the current status of a torrent.
@@ -21,7 +24,7 @@ use std::{
 pub struct AtomicTorrentStatus {
     torrent: Torrent,
     pieces_status: Mutex<HashMap<u32, PieceStatus>>,
-    current_peers: Mutex<usize>,
+    current_peers: AtomicUsize,
     config: Cfg,
 }
 
@@ -58,7 +61,7 @@ impl AtomicTorrentStatus {
         Self {
             torrent: torrent.clone(),
             pieces_status: Mutex::new(pieces_status),
-            current_peers: Mutex::new(0),
+            current_peers: AtomicUsize::new(0),
             config,
         }
     }
@@ -111,12 +114,8 @@ impl AtomicTorrentStatus {
     }
 
     /// Adds a new peer to the current number of peers.
-    ///
-    /// # Errors
-    /// - `PoisonedCurrentPeersLock` if the lock on the `current_peers` field is poisoned.
-    pub fn peer_connected(&self) -> Result<(), AtomicTorrentStatusError> {
-        *self.lock_current_peers()? += 1;
-        Ok(())
+    pub fn peer_connected(&self) {
+        self.current_peers.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Removes a peer from the current number of peers.
@@ -125,20 +124,16 @@ impl AtomicTorrentStatus {
     /// - `PoisonedCurrentPeersLock` if the lock on the `current_peers` field is poisoned.
     /// - `NoPeersConnected` if there are no peers connected.
     pub fn peer_disconnected(&self) -> Result<(), AtomicTorrentStatusError> {
-        let mut current_peers = self.lock_current_peers()?;
-        if *current_peers == 0 {
+        if self.current_peers.load(Ordering::Relaxed) == 0 {
             return Err(AtomicTorrentStatusError::NoPeersConnected);
         }
-        *current_peers -= 1;
+        self.current_peers.fetch_sub(1, Ordering::Relaxed);
         Ok(())
     }
 
     /// Returns the current number of peers.
-    ///
-    /// # Errors
-    /// - `PoisonedCurrentPeersLock` if the lock on the `current_peers` field is poisoned.
-    pub fn current_peers(&self) -> Result<usize, AtomicTorrentStatusError> {
-        Ok(*self.lock_current_peers()?)
+    pub fn current_peers(&self) -> usize {
+        self.current_peers.load(Ordering::Relaxed)
     }
 
     /// Returns the index of a piece that can be downloaded from a peer `Bitfield` passed by parameter.
@@ -231,12 +226,6 @@ impl AtomicTorrentStatus {
             .lock()
             .map_err(|_| AtomicTorrentStatusError::PoisonedPiecesStatusLock)
     }
-
-    fn lock_current_peers(&self) -> Result<MutexGuard<usize>, AtomicTorrentStatusError> {
-        self.current_peers
-            .lock()
-            .map_err(|_| AtomicTorrentStatusError::PoisonedCurrentPeersLock)
-    }
 }
 
 #[cfg(test)]
@@ -278,7 +267,7 @@ mod tests {
         let torrent = create_test_torrent("test_starting_current_peers");
 
         let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
-        assert_eq!(0, status.current_peers().unwrap());
+        assert_eq!(0, status.current_peers());
     }
 
     #[test]
@@ -286,8 +275,8 @@ mod tests {
         let torrent = create_test_torrent("test_peer_connected");
 
         let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
-        status.peer_connected().unwrap();
-        assert_eq!(1, status.current_peers().unwrap());
+        status.peer_connected();
+        assert_eq!(1, status.current_peers());
     }
 
     #[test]
@@ -295,10 +284,10 @@ mod tests {
         let torrent = create_test_torrent("test_peer_disconnected");
 
         let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
-        status.peer_connected().unwrap();
-        status.peer_connected().unwrap();
+        status.peer_connected();
+        status.peer_connected();
         status.peer_disconnected().unwrap();
-        assert_eq!(1, status.current_peers().unwrap());
+        assert_eq!(1, status.current_peers());
     }
 
     #[test]
@@ -389,13 +378,13 @@ mod tests {
 
         for _ in 0..10 {
             let status_cloned = status.clone();
-            let join = thread::spawn(move || status_cloned.peer_connected().unwrap());
+            let join = thread::spawn(move || status_cloned.peer_connected());
             joins.push(join);
         }
         for join in joins {
             join.join().unwrap();
         }
-        assert_eq!(10, status.current_peers().unwrap());
+        assert_eq!(10, status.current_peers());
     }
 
     #[test]

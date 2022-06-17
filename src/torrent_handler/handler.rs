@@ -59,7 +59,7 @@ impl TorrentHandler {
 
             // Iniciar conección con cada peer
             for peer in peer_list {
-                let mut current_peers = self.current_peers()?;
+                let mut current_peers = self.torrent_status.current_peers();
                 let mut remaining_pieces = self.remaining_pieces()?;
                 let mut is_finished = self.torrent_download_finished()?;
 
@@ -70,11 +70,11 @@ impl TorrentHandler {
                 {
                     thread::yield_now();
 
-                    current_peers = self.current_peers()?;
+                    current_peers = self.torrent_status.current_peers();
                     remaining_pieces = self.remaining_pieces()?;
                     is_finished = self.torrent_download_finished()?;
                 }
-                self.connect_to_peer(peer)?;
+                self.connect_to_peer(peer);
             }
         }
         self.logger_sender.info("Torrent download finished.");
@@ -97,22 +97,14 @@ impl TorrentHandler {
             .map_err(TorrentHandlerError::TorrentStatusError)
     }
 
-    fn current_peers(&mut self) -> Result<usize, TorrentHandlerError> {
-        self.torrent_status
-            .current_peers()
-            .map_err(TorrentHandlerError::TorrentStatusError)
-    }
-
     fn remaining_pieces(&mut self) -> Result<usize, TorrentHandlerError> {
         self.torrent_status
             .remaining_pieces()
             .map_err(TorrentHandlerError::TorrentStatusError)
     }
 
-    fn connect_to_peer(&mut self, peer: BtPeer) -> Result<(), TorrentHandlerError> {
-        self.torrent_status
-            .peer_connected()
-            .map_err(TorrentHandlerError::TorrentStatusError)?;
+    fn connect_to_peer(&mut self, peer: BtPeer) {
+        self.torrent_status.peer_connected();
 
         let peer_name = format!("{}:{}", peer.ip, peer.port);
 
@@ -140,6 +132,5 @@ impl TorrentHandler {
             Ok(_) => (),
             Err(err) => self.logger_sender.error(&format!("{:?}", err)),
         }
-        Ok(())
     }
 }
