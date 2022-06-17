@@ -110,22 +110,27 @@ impl Torrent {
             .collect()
     }
 
+    /// Returns the name of the torrent.
     pub fn name(&self) -> String {
         self.info.name.clone()
     }
 
+    /// Returns the size of pieces of the torrent.
     pub fn piece_length(&self) -> u32 {
         self.info.piece_length as u32
     }
 
+    /// Returns the length in bytes of the torrent.
     pub fn length(&self) -> u32 {
         self.info.length as u32
     }
 
+    /// Returns the number of pieces of the torrent.
     pub fn total_pieces(&self) -> u32 {
         (self.info.length as f64 / self.info.piece_length as f64).ceil() as u32
     }
 
+    /// Returns the size of the last piece of the torrent.
     pub fn last_piece_size(&self) -> u32 {
         self.info.length as u32 % self.info.piece_length as u32
     }
@@ -240,6 +245,36 @@ mod tests {
         assert_eq!(torrent.get_info_hash_as_bytes().unwrap(), info_hash_bytes);
     }
 
+    #[test]
+    fn test_name() {
+        let torrent = build_test_torrent();
+        assert_eq!(torrent.name(), "example");
+    }
+
+    #[test]
+    fn test_piece_length() {
+        let torrent = build_test_torrent();
+        assert_eq!(torrent.piece_length(), 10);
+    }
+
+    #[test]
+    fn test_length() {
+        let torrent = build_test_torrent();
+        assert_eq!(torrent.length(), 105);
+    }
+
+    #[test]
+    fn test_total_pieces() {
+        let torrent = build_test_torrent();
+        assert_eq!(torrent.total_pieces(), 11);
+    }
+
+    #[test]
+    fn test_last_piece_size() {
+        let torrent = build_test_torrent();
+        assert_eq!(torrent.last_piece_size(), 5);
+    }
+
     fn build_info_bencode(
         length: i64,
         name: Vec<u8>,
@@ -262,5 +297,18 @@ mod tests {
         dict.insert(b"info".to_vec(), Bencode::BDict(info));
 
         Bencode::BDict(dict)
+    }
+
+    fn build_test_torrent() -> Torrent {
+        Torrent {
+            announce_url: String::from("http://example.com/announce"),
+            info: Info {
+                length: 105,
+                name: String::from("example"),
+                piece_length: 10,
+                pieces: String::from("test").into_bytes(),
+            },
+            info_hash: "info_hash".to_string(),
+        }
     }
 }
