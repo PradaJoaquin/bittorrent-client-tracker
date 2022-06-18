@@ -167,10 +167,7 @@ impl PeerSession {
         self.logger_sender
             .info(&format!("Piece {} downloaded!", piece_index));
 
-        let remaining_pieces = self
-            .torrent_status
-            .downloaded_pieces()
-            .map_err(PeerSessionError::ErrorGettingRemainingPieces)?;
+        let remaining_pieces = self.torrent_status.downloaded_pieces();
         println!(
             "*** Torrent: {} - Pieces downloaded: {} / {}",
             self.torrent.name(),

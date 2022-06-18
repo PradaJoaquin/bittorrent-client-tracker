@@ -26,6 +26,9 @@ pub struct AtomicTorrentStatus {
     pieces_status: Mutex<HashMap<u32, PieceStatus>>,
     current_peers: AtomicUsize,
     config: Cfg,
+    finished_pieces: AtomicUsize,
+    downloading_pieces: AtomicUsize,
+    free_pieces: AtomicUsize,
 }
 
 /// Possible states of a piece.
@@ -52,9 +55,8 @@ impl AtomicTorrentStatus {
     pub fn new(torrent: &Torrent, config: Cfg) -> Self {
         let mut pieces_status: HashMap<u32, PieceStatus> = HashMap::new();
 
-        for index in
-            0..(torrent.info.length as f64 / torrent.info.piece_length as f64).ceil() as u32
-        {
+        let total_pieces = torrent.total_pieces();
+        for index in 0..total_pieces {
             pieces_status.insert(index as u32, PieceStatus::Free);
         }
 
@@ -63,54 +65,30 @@ impl AtomicTorrentStatus {
             pieces_status: Mutex::new(pieces_status),
             current_peers: AtomicUsize::new(0),
             config,
+            finished_pieces: AtomicUsize::new(0),
+            downloading_pieces: AtomicUsize::new(0),
+            free_pieces: AtomicUsize::new(total_pieces as usize),
         }
     }
 
-    /// Returns true if every piece is finished.
-    ///
-    /// # Errors
-    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
-    pub fn is_finished(&self) -> Result<bool, AtomicTorrentStatusError> {
-        Ok(self
-            .lock_pieces_status()?
-            .values()
-            .all(|status| *status == PieceStatus::Finished))
+    /// Returns true if the torrent download finished.
+    pub fn is_finished(&self) -> bool {
+        self.finished_pieces.load(Ordering::Relaxed) == self.torrent.total_pieces() as usize
     }
 
     /// Returns the number of ramaining pieces to download.
-    ///
-    /// # Errors
-    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
-    pub fn remaining_pieces(&self) -> Result<usize, AtomicTorrentStatusError> {
-        Ok(self
-            .lock_pieces_status()?
-            .values()
-            .filter(|status| **status != PieceStatus::Finished)
-            .count())
+    pub fn remaining_pieces(&self) -> usize {
+        self.torrent.total_pieces() as usize - self.finished_pieces.load(Ordering::Relaxed)
     }
 
     /// Returns the number of pieces that are currently downloading.
-    ///
-    /// # Errors
-    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
-    pub fn downloading_pieces(&self) -> Result<usize, AtomicTorrentStatusError> {
-        Ok(self
-            .lock_pieces_status()?
-            .values()
-            .filter(|status| **status == PieceStatus::Downloading)
-            .count())
+    pub fn downloading_pieces(&self) -> usize {
+        self.downloading_pieces.load(Ordering::Relaxed)
     }
 
     /// Returns the number of pieces that are already downloaded.
-    ///
-    /// # Errors
-    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
-    pub fn downloaded_pieces(&self) -> Result<usize, AtomicTorrentStatusError> {
-        Ok(self
-            .lock_pieces_status()?
-            .values()
-            .filter(|status| **status == PieceStatus::Finished)
-            .count())
+    pub fn downloaded_pieces(&self) -> usize {
+        self.finished_pieces.load(Ordering::Relaxed)
     }
 
     /// Adds a new peer to the current number of peers.
@@ -158,6 +136,8 @@ impl AtomicTorrentStatus {
         Ok(match index {
             Some(index) => {
                 pieces_status.insert(index, PieceStatus::Downloading);
+                self.downloading_pieces.fetch_add(1, Ordering::Relaxed);
+                self.free_pieces.fetch_sub(1, Ordering::Relaxed);
                 Some(index)
             }
             None => None,
@@ -194,6 +174,8 @@ impl AtomicTorrentStatus {
         .map_err(AtomicTorrentStatusError::SavePieceError)?;
 
         piece_status.insert(index, PieceStatus::Finished);
+        self.downloading_pieces.fetch_sub(1, Ordering::Relaxed);
+        self.finished_pieces.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -216,6 +198,8 @@ impl AtomicTorrentStatus {
             None => return Err(AtomicTorrentStatusError::InvalidPieceIndex),
         }
         piece_status.insert(index, PieceStatus::Free);
+        self.downloading_pieces.fetch_sub(1, Ordering::Relaxed);
+        self.free_pieces.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
@@ -243,7 +227,7 @@ mod tests {
         let torrent = create_test_torrent("test_is_not_finished");
 
         let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
-        assert!(!status.is_finished().unwrap());
+        assert!(!status.is_finished());
     }
 
     #[test]
@@ -258,7 +242,7 @@ mod tests {
                 .unwrap();
             status.piece_downloaded(index as u32, vec![]).unwrap();
         }
-        assert!(status.is_finished().unwrap());
+        assert!(status.is_finished());
         fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
@@ -411,7 +395,7 @@ mod tests {
         for join in joins {
             join.join().unwrap();
         }
-        assert!(status.is_finished().unwrap());
+        assert!(status.is_finished());
         fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
@@ -441,7 +425,7 @@ mod tests {
 
         let total_pieces = (torrent.info.length / torrent.info.piece_length) as usize;
 
-        let remaining_starting_pieces = status.remaining_pieces().unwrap();
+        let remaining_starting_pieces = status.remaining_pieces();
 
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
@@ -450,7 +434,7 @@ mod tests {
         status.piece_downloaded(index, vec![]).unwrap();
 
         assert_eq!(remaining_starting_pieces, total_pieces);
-        assert_eq!(status.remaining_pieces().unwrap(), total_pieces - 1);
+        assert_eq!(status.remaining_pieces(), total_pieces - 1);
         fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
@@ -465,7 +449,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(status.downloading_pieces().unwrap(), 1);
+        assert_eq!(status.downloading_pieces(), 1);
     }
 
     #[test]
@@ -480,7 +464,7 @@ mod tests {
             .unwrap();
         status.piece_downloaded(index, vec![]).unwrap();
 
-        assert_eq!(status.downloaded_pieces().unwrap(), 1);
+        assert_eq!(status.downloaded_pieces(), 1);
         fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
     }
 
