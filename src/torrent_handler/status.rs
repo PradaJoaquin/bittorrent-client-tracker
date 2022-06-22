@@ -2,6 +2,7 @@ use crate::{
     config::cfg::Cfg, peer::peer_message::Bitfield, storage_manager::manager::save_piece,
     torrent_parser::torrent::Torrent,
 };
+use rand::{self, prelude::IteratorRandom};
 use std::{
     collections::HashMap,
     sync::{
@@ -126,12 +127,27 @@ impl AtomicTorrentStatus {
     ) -> Result<Option<u32>, AtomicTorrentStatusError> {
         let mut pieces_status = self.lock_pieces_status()?;
 
-        let index = pieces_status
-            .clone()
-            .iter()
-            .filter(|(_, status)| **status == PieceStatus::Free)
-            .find(|(index, _)| bitfield.has_piece(**index))
-            .map(|(index, _)| *index);
+        // If there are no free pieces do the 'EndGame' strategy, otherwise do the normal piece selection.
+        let index = if pieces_status
+            .values()
+            .filter(|status| **status == PieceStatus::Free)
+            .count()
+            == 0
+        {
+            pieces_status
+                .clone()
+                .iter()
+                .filter(|(_, status)| **status == PieceStatus::Downloading)
+                .choose(&mut rand::thread_rng())
+                .map(|(index, _)| *index)
+        } else {
+            pieces_status
+                .clone()
+                .iter()
+                .filter(|(_, status)| **status == PieceStatus::Free)
+                .find(|(index, _)| bitfield.has_piece(**index))
+                .map(|(index, _)| *index)
+        };
 
         Ok(match index {
             Some(index) => {

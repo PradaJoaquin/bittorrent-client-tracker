@@ -60,21 +60,17 @@ impl TorrentHandler {
             // Iniciar conección con cada peer
             for peer in peer_list {
                 let mut current_peers = self.torrent_status.current_peers();
-                let mut remaining_pieces = self.torrent_status.remaining_pieces();
                 let mut is_finished = self.torrent_status.is_finished();
 
                 // Si se llego  máximo de peers simultaneos esperar hasta que se libere uno
-                while (current_peers >= self.config.max_peers_per_torrent as usize
-                    || current_peers >= remaining_pieces)
-                    && !is_finished
+                while (current_peers >= self.config.max_peers_per_torrent as usize) && !is_finished
                 {
                     thread::yield_now();
 
                     current_peers = self.torrent_status.current_peers();
-                    remaining_pieces = self.torrent_status.remaining_pieces();
                     is_finished = self.torrent_status.is_finished();
                 }
-                self.connect_to_peer(peer)?;
+                self.connect_to_peer(peer);
             }
         }
         self.logger_sender.info("Torrent download finished.");
@@ -91,7 +87,7 @@ impl TorrentHandler {
         Ok(tracker_response.peers)
     }
 
-    fn connect_to_peer(&mut self, peer: BtPeer) -> Result<(), TorrentHandlerError> {
+    fn connect_to_peer(&mut self, peer: BtPeer) {
         self.torrent_status.peer_connected();
 
         let peer_name = format!("{}:{}", peer.ip, peer.port);
@@ -120,6 +116,5 @@ impl TorrentHandler {
             Ok(_) => (),
             Err(err) => self.logger_sender.error(&format!("{:?}", err)),
         }
-        Ok(())
     }
 }
