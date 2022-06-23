@@ -249,8 +249,9 @@ mod tests {
     #[test]
     fn test_is_finished() {
         let torrent = create_test_torrent("test_is_finished");
+        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let status = AtomicTorrentStatus::new(&torrent, config.clone());
         for _ in 0..(torrent.info.length / torrent.info.piece_length) {
             let index = status
                 .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
@@ -259,7 +260,11 @@ mod tests {
             status.piece_downloaded(index as u32, vec![]).unwrap();
         }
         assert!(status.is_finished());
-        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
+        fs::remove_file(format!(
+            "{}/{}",
+            config.download_directory, torrent.info.name
+        ))
+        .unwrap();
     }
 
     #[test]
@@ -327,8 +332,9 @@ mod tests {
     #[test]
     fn test_piece_downloaded() {
         let torrent = create_test_torrent("test_piece_downloaded");
+        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let status = AtomicTorrentStatus::new(&torrent, config.clone());
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
@@ -338,7 +344,11 @@ mod tests {
             *status.pieces_status.lock().unwrap().get(&index).unwrap(),
             PieceStatus::Finished
         );
-        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
+        fs::remove_file(format!(
+            "{}/{}",
+            config.download_directory, torrent.info.name
+        ))
+        .unwrap();
     }
 
     #[test]
@@ -390,11 +400,9 @@ mod tests {
     #[test]
     fn test_multiple_threads_piece_status() {
         let torrent = create_test_torrent("test_multiple_threads_piece_status");
+        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = Arc::new(AtomicTorrentStatus::new(
-            &torrent,
-            Cfg::new(CONFIG_PATH).unwrap(),
-        ));
+        let status = Arc::new(AtomicTorrentStatus::new(&torrent, config.clone()));
         let mut joins = Vec::new();
 
         for _ in 0..10 {
@@ -412,7 +420,11 @@ mod tests {
             join.join().unwrap();
         }
         assert!(status.is_finished());
-        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
+        fs::remove_file(format!(
+            "{}/{}",
+            config.download_directory, torrent.info.name
+        ))
+        .unwrap();
     }
 
     #[test]
@@ -436,8 +448,9 @@ mod tests {
     #[test]
     fn test_remaining_pieces() {
         let torrent = create_test_torrent("test_remaining_pieces");
+        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let status = AtomicTorrentStatus::new(&torrent, config.clone());
 
         let total_pieces = (torrent.info.length / torrent.info.piece_length) as usize;
 
@@ -451,7 +464,11 @@ mod tests {
 
         assert_eq!(remaining_starting_pieces, total_pieces);
         assert_eq!(status.remaining_pieces(), total_pieces - 1);
-        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
+        fs::remove_file(format!(
+            "{}/{}",
+            config.download_directory, torrent.info.name
+        ))
+        .unwrap();
     }
 
     #[test]
@@ -471,8 +488,9 @@ mod tests {
     #[test]
     fn test_downloaded_pieces() {
         let torrent = create_test_torrent("test_downloaded_pieces");
+        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let status = AtomicTorrentStatus::new(&torrent, config.clone());
 
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
@@ -481,7 +499,11 @@ mod tests {
         status.piece_downloaded(index, vec![]).unwrap();
 
         assert_eq!(status.downloaded_pieces(), 1);
-        fs::remove_file(format!("./downloads/{}", torrent.info.name)).unwrap();
+        fs::remove_file(format!(
+            "{}/{}",
+            config.download_directory, torrent.info.name
+        ))
+        .unwrap();
     }
 
     // Auxiliary functions
