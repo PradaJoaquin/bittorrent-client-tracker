@@ -1,5 +1,7 @@
 use crate::{
-    config::cfg::Cfg, peer::peer_message::Bitfield, storage_manager::manager::save_piece,
+    config::cfg::Cfg,
+    peer::peer_message::Bitfield,
+    storage_manager::manager::{retrieve_block, save_piece},
     torrent_parser::torrent::Torrent,
 };
 use rand::{self, prelude::IteratorRandom};
@@ -49,6 +51,8 @@ pub enum AtomicTorrentStatusError {
     NoPeersConnected,
     PieceWasNotDownloading,
     SavePieceError(std::io::Error),
+    RetrievingPieceError(std::io::Error),
+    PieceWasNotFinished,
 }
 
 impl AtomicTorrentStatus {
@@ -195,6 +199,38 @@ impl AtomicTorrentStatus {
         Ok(())
     }
 
+    /// Gets a piece already downloaded from the disk.
+    ///
+    /// # Errors
+    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
+    /// - `InvalidPieceIndex` if the piece index is invalid.
+    /// - `PieceWasNotFinished` if the piece was not donwloaded.
+    pub fn get_piece(
+        &self,
+        index: u32,
+        offset: u64,
+        length: usize,
+    ) -> Result<Vec<u8>, AtomicTorrentStatusError> {
+        let pieces_status = self.lock_pieces_status()?;
+
+        match pieces_status.get(&index) {
+            Some(value) => {
+                if *value != PieceStatus::Finished {
+                    return Err(AtomicTorrentStatusError::PieceWasNotFinished);
+                }
+            }
+            None => return Err(AtomicTorrentStatusError::InvalidPieceIndex),
+        }
+
+        retrieve_block(
+            self.torrent.info.name.clone(),
+            offset,
+            length,
+            self.config.clone(),
+        )
+        .map_err(AtomicTorrentStatusError::RetrievingPieceError)
+    }
+
     /// Aborts a piece download.
     ///
     /// This must be called when a piece obteined from `select_piece` can not longer be downloaded.
@@ -217,6 +253,15 @@ impl AtomicTorrentStatus {
         self.downloading_pieces.fetch_sub(1, Ordering::Relaxed);
         self.free_pieces.fetch_add(1, Ordering::Relaxed);
         Ok(())
+    }
+
+    /// Returns the current bitfield of the torrent.
+    ///
+    /// # Errors
+    /// - `PoisonedPiecesStatusLock` if the lock on the `pieces_status` field is poisoned.
+    pub fn get_bitfield(&self) -> Result<Bitfield, AtomicTorrentStatusError> {
+        let pieces_status = self.lock_pieces_status()?;
+        Ok(Bitfield::from(&pieces_status))
     }
 
     fn lock_pieces_status(

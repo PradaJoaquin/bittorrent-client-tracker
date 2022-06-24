@@ -1,4 +1,7 @@
-use super::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
+use super::{
+    server::{BtServer, BtServerError},
+    status::{AtomicTorrentStatus, AtomicTorrentStatusError},
+};
 use crate::{
     config::cfg::Cfg,
     logger::logger_sender::LoggerSender,
@@ -24,6 +27,7 @@ pub struct TorrentHandler {
 pub enum TorrentHandlerError {
     TrackerError(TrackerHandlerError),
     TorrentStatusError(AtomicTorrentStatusError),
+    StartingServerError(BtServerError),
 }
 
 impl TorrentHandler {
@@ -46,7 +50,7 @@ impl TorrentHandler {
     /// - `TrackerErr` if there was a problem connecting to the tracker or getting the peers.
     /// - `TorrentStatusError` if there was a problem using the `Torrent Status`.
     pub fn handle(&mut self) -> Result<(), TorrentHandlerError> {
-        // TODO: Inicializar Torrent Server con self.config.tcp_port
+        self.start_server()?;
 
         let tracker_handler =
             TrackerHandler::new(self.torrent.clone(), self.config.tcp_port.into())
@@ -74,6 +78,31 @@ impl TorrentHandler {
             }
         }
         self.logger_sender.info("Torrent download finished.");
+        Ok(())
+    }
+
+    fn start_server(&mut self) -> Result<(), TorrentHandlerError> {
+        let mut server = BtServer::new(
+            self.torrent.clone(),
+            self.config.clone(),
+            self.torrent_status.clone(),
+            self.logger_sender.clone(),
+        );
+
+        let builder =
+            thread::Builder::new().name(format!("Server for Torrent: {}", self.torrent.info.name));
+        let server_logger_sender = self.logger_sender.clone();
+
+        let join = builder.spawn(move || match server.init() {
+            Ok(_) => (),
+            Err(err) => {
+                server_logger_sender.error(&format!("The server couldn't be started: {:?}", err));
+            }
+        });
+        match join {
+            Ok(_) => (),
+            Err(err) => self.logger_sender.error(&format!("{:?}", err)),
+        }
         Ok(())
     }
 
@@ -106,7 +135,7 @@ impl TorrentHandler {
         ));
         let peer_logger_sender = self.logger_sender.clone();
 
-        let join = builder.spawn(move || match peer_session.start() {
+        let join = builder.spawn(move || match peer_session.start_outgoing_seeder() {
             Ok(_) => (),
             Err(err) => {
                 peer_logger_sender.warn(&format!("{:?}", err));

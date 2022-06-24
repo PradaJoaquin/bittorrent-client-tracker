@@ -7,7 +7,7 @@ use crate::torrent_handler::status::PieceStatus;
 /// It contains information about the pieces that the peer has.
 #[derive(Debug)]
 pub struct Bitfield {
-    bitfield: Vec<u8>,
+    pub bitfield: Vec<u8>,
 }
 
 impl Bitfield {

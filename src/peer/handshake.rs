@@ -7,11 +7,11 @@ pub enum FromHandshakeError {
 /// Is the first message sent to start a connection with a peer.
 #[derive(Debug)]
 pub struct Handshake {
-    pstrlen: u8,
-    pstr: String,
-    reserved: [u8; 8],
-    info_hash: Vec<u8>,
-    peer_id: Vec<u8>,
+    pub pstrlen: u8,
+    pub pstr: String,
+    pub reserved: [u8; 8],
+    pub info_hash: Vec<u8>,
+    pub peer_id: Vec<u8>,
 }
 
 const PSTR: &str = "BitTorrent protocol";

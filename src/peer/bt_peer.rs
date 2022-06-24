@@ -3,7 +3,7 @@ use crate::encoder_decoder::bencode::Bencode;
 /// `BtPeer` struct containing individual BtPeer information.
 ///
 /// To create a new `BtPeer` use the method builder `from()`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BtPeer {
     pub peer_id: Option<Vec<u8>>,
     pub ip: String,
