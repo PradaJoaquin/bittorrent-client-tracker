@@ -45,6 +45,10 @@ impl Handshake {
         }
 
         let pstrlen = bytes[0];
+        if pstrlen != 19 {
+            return Err(FromHandshakeError::InvalidHandshake);
+        }
+
         let pstr = String::from_utf8(bytes[1..pstrlen as usize + 1].to_vec())
             .map_err(|_| FromHandshakeError::InvalidHandshake)?;
         let reserved = &bytes[pstrlen as usize + 1..pstrlen as usize + 9];

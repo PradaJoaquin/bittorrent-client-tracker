@@ -76,7 +76,7 @@ impl BtServer {
 
     fn handle_connection(&mut self, mut stream: TcpStream) -> Result<(), BtServerError> {
         let addr = stream
-            .local_addr()
+            .peer_addr()
             .map_err(BtServerError::HandleConnectionError)?;
 
         let peer = BtPeer::new(addr.ip().to_string(), addr.port() as i64);
@@ -90,7 +90,9 @@ impl BtServer {
         );
 
         match peer_session.handshake_incoming_leecher(&mut stream) {
-            Ok(_) => (),
+            Ok(_) => {
+                self.unchoke_peer(peer_session, peer, stream);
+            }
             Err(err) => {
                 self.logger_sender.warn(&format!("{:?}", err));
             }
@@ -99,8 +101,6 @@ impl BtServer {
         // peer connected
 
         // TODO: Handle max connections.
-
-        self.unchoke_peer(peer_session, peer, stream);
 
         Ok(())
     }

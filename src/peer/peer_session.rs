@@ -325,6 +325,14 @@ impl PeerSession {
             .map_err(PeerSessionError::ErrorReadingMessage)?;
         let len = u32::from_be_bytes(length);
 
+        // TODO: solucionar el problema de que el peer puede mandar un mensaje de mas de 16393 bytes. Cuando esta mandando cualquiera.
+        // Issue: https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/issues/101
+        // Ahora que en el server la iniciacion esta dentro del Ok() esta fallando en el handshake, mirar ahi tambien.
+        if len > BLOCK_SIZE {
+            // handshake err temporal
+            return Err(PeerSessionError::HandshakeError);
+        }
+
         if len == 0 {
             return Ok(MessageId::KeepAlive);
         }
@@ -445,7 +453,7 @@ impl PeerSession {
         block: &[u8],
         stream: &mut TcpStream,
     ) -> Result<(), PeerSessionError> {
-        let mut payload = vec![0; block.len() + 9];
+        let mut payload = vec![];
         payload.extend(index.to_be_bytes());
         payload.extend(begin.to_be_bytes());
         payload.extend(block);
