@@ -35,8 +35,8 @@ impl Message {
     }
 
     /// Parses a byte array into a `Message`.
-    pub fn from_bytes(msg_type: [u8; 1], payload: &[u8]) -> Result<Self, MessageError> {
-        let id = match msg_type[0] {
+    pub fn from_bytes(payload: &[u8]) -> Result<Self, MessageError> {
+        let id = match payload[0] {
             0 => MessageId::Choke,
             1 => MessageId::Unchoke,
             2 => MessageId::Interested,
@@ -50,9 +50,15 @@ impl Message {
             _ => return Err(MessageError::InvalidMessage),
         };
 
+        let msg_payload = if payload.len() > 1 {
+            payload[1..].to_vec()
+        } else {
+            vec![]
+        };
+
         Ok(Self {
             id,
-            payload: payload.to_vec(),
+            payload: msg_payload,
         })
     }
 
@@ -74,22 +80,20 @@ mod tests {
 
     #[test]
     fn test_message_unchoke_from_bytes() {
-        let msg_type = 1u8.to_be_bytes();
-        let payload = vec![];
-        let msg = Message::from_bytes(msg_type, &payload).unwrap();
+        let payload = 1u8.to_be_bytes();
+        let msg = Message::from_bytes(&payload).unwrap();
 
         assert_eq!(msg.id, MessageId::Unchoke);
-        assert_eq!(msg.payload, payload);
+        assert_eq!(msg.payload, vec![]);
     }
 
     #[test]
     fn test_message_interested_from_bytes() {
-        let msg_type = 2u8.to_be_bytes();
-        let payload = vec![];
-        let msg = Message::from_bytes(msg_type, &payload).unwrap();
+        let payload = 2u8.to_be_bytes();
+        let msg = Message::from_bytes(&payload).unwrap();
 
         assert_eq!(msg.id, MessageId::Interested);
-        assert_eq!(msg.payload, payload);
+        assert_eq!(msg.payload, vec![]);
     }
 
     #[test]

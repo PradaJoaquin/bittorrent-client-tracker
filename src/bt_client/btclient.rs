@@ -52,7 +52,7 @@ impl BtClient {
     */
     pub fn init(torrents_directory: String) -> Result<Self, BtClientError> {
         let config = Self::read_configuration_file(CONFIG_FILE_PATH)?;
-        let logger = Logger::new(&config.log_directory)?;
+        let logger = Logger::new(&config.log_directory, config.max_log_file_kb_size * 1000)?;
 
         let logger_sender = logger.new_sender();
         logger_sender.info("Initializing client...");

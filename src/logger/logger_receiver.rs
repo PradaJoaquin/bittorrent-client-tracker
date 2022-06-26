@@ -10,7 +10,6 @@ use std::fs::File;
 use std::io::Write;
 
 use chrono::prelude::*;
-
 /// A logger to log into a file
 ///
 /// The logger works with channels. It has one channel to receive the information
@@ -31,12 +30,12 @@ impl Logger {
     /// - There was a problem creating the logging directory.
     /// - A new file could not be created at the logging directory.
     /// - There was a problem creating a new thread for the logger receiver.
-    pub fn new(dir_path: &str) -> Result<Self, LoggerError> {
+    pub fn new(dir_path: &str, max_log_file_size: u32) -> Result<Self, LoggerError> {
         let (sender, receiver): (Sender<String>, Receiver<String>) = channel();
 
         Self::create_log_directory(dir_path)?;
         let file = Self::create_log_file(dir_path)?;
-        Self::spawn_log_receiver(receiver, file)?;
+        Self::spawn_log_receiver(receiver, file, max_log_file_size)?;
 
         Ok(Self {
             sender: LoggerSender::new(sender),
@@ -61,7 +60,11 @@ impl Logger {
         }
     }
 
-    fn spawn_log_receiver(receiver: Receiver<String>, file: File) -> Result<(), LoggerError> {
+    fn spawn_log_receiver(
+        receiver: Receiver<String>,
+        file: File,
+        max_file_size: u32,
+    ) -> Result<(), LoggerError> {
         let builder = thread::Builder::new().name(LOGGER_THREAD_NAME.to_string());
         let result = builder.spawn(move || {
             let mut file = file;
@@ -71,7 +74,25 @@ impl Logger {
                     Ok(_) => {}
                     Err(err) => eprintln!("Error({err}) writing to the log"),
                 }
+                match file.metadata() {
+                    Ok(metadata) => {
+                        if metadata.len() > max_file_size as u64 {
+                            let err_msg = format!(
+                                "Max log file size of {}kb has been reached. Closing logger receiver.",
+                                max_file_size
+                            );
+                            eprintln!("{}", err_msg);
+                            match file.write_all(msg.as_bytes()) {
+                                Ok(_) => {}
+                                Err(err) => eprintln!("Error({err}) writing to the log"),
+                            }
+                            break;
+                        }
+                    }
+                    Err(err) => eprintln!("Error({err}) writing to the log"),
+                }
             }
+            eprintln!("Logger receiver cloced");
         });
         match result {
             Ok(_) => Ok(()),
@@ -152,9 +173,10 @@ mod tests {
     #[test]
     fn test_multiple_loggin() {
         let path = "./test_multiple_loggin";
+        let max_log_file_size = 10000;
         let logging = ["log_test_1", "log_test_2", "log_test_3"];
 
-        let logger = Logger::new(path).unwrap();
+        let logger = Logger::new(path, max_log_file_size).unwrap();
 
         let logger_sender_1 = logger.new_sender();
         let logger_sender_2 = logger.new_sender();
@@ -186,9 +208,10 @@ mod tests {
     #[test]
     fn test_multiple_loggin_same_thread() {
         let path = "./test_multiple_loggin_same_thread";
+        let max_log_file_size = 10000;
         let logging = ["log_test_1", "log_test_2", "log_test_3"];
 
-        let logger = Logger::new(path).unwrap();
+        let logger = Logger::new(path, max_log_file_size).unwrap();
 
         let logger_sender = logger.new_sender();
 
@@ -216,7 +239,8 @@ mod tests {
     // Auxiliary functions
 
     fn assert_logging(path: &str, logging: String, log_type: String) {
-        let logger = Logger::new(path).unwrap();
+        let max_log_file_size = 10000;
+        let logger = Logger::new(path, max_log_file_size).unwrap();
         let logger_sender = logger.new_sender();
 
         let logging_assert = logging.clone();

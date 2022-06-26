@@ -1,6 +1,7 @@
 use std::fmt::Write;
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{
     io::{Read, Write as IOWrite},
     net::TcpStream,
@@ -163,11 +164,15 @@ impl PeerSession {
 
     fn set_stream_timeouts(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
         stream
-            .set_read_timeout(Some(self.config.read_write_timeout))
+            .set_read_timeout(Some(Duration::from_secs(
+                self.config.read_write_seconds_timeout,
+            )))
             .map_err(|_| PeerSessionError::HandshakeError)?;
 
         stream
-            .set_write_timeout(Some(self.config.read_write_timeout))
+            .set_write_timeout(Some(Duration::from_secs(
+                self.config.read_write_seconds_timeout,
+            )))
             .map_err(|_| PeerSessionError::HandshakeError)?;
 
         Ok(())
@@ -228,6 +233,11 @@ impl PeerSession {
         Ok(self.piece.clone())
     }
 
+    /// Downloads a piece in 'chunks' of blocks.
+    ///
+    /// If the pipelinening size in the config is 5, then it will request 5 blocks and wait for those 5 blocks to be received.
+    ///
+    /// If there are less than 5 blocks left in the piece, it will request the remaining blocks and wait for those blocks to be received.
     fn download_with_pipeline(
         &mut self,
         piece_index: u32,
@@ -318,7 +328,6 @@ impl PeerSession {
         stream: &mut TcpStream,
     ) -> Result<MessageId, PeerSessionError> {
         let mut length = [0; 4];
-        let mut msg_type = [0; 1];
 
         stream
             .read_exact(&mut length)
@@ -337,20 +346,14 @@ impl PeerSession {
             return Ok(MessageId::KeepAlive);
         }
 
+        let mut payload = vec![0; (len) as usize];
+
         stream
-            .read_exact(&mut msg_type)
+            .read_exact(&mut payload)
             .map_err(PeerSessionError::ErrorReadingMessage)?;
 
-        let mut payload = vec![0; (len - 1) as usize];
-
-        if len > 1 {
-            stream
-                .read_exact(&mut payload)
-                .map_err(PeerSessionError::ErrorReadingMessage)?;
-        }
-
-        let message = Message::from_bytes(msg_type, &payload)
-            .map_err(PeerSessionError::MessageDoesNotExist)?;
+        let message =
+            Message::from_bytes(&payload).map_err(PeerSessionError::MessageDoesNotExist)?;
         let id = message.id.clone();
 
         self.handle_message(message, stream)?;
