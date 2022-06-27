@@ -9,7 +9,13 @@ use crate::{
     torrent_parser::torrent::Torrent,
     tracker::tracker_handler::{TrackerHandler, TrackerHandlerError},
 };
-use std::{sync::Arc, thread};
+use std::{
+    sync::{
+        mpsc::{self, Receiver},
+        Arc,
+    },
+    thread,
+};
 
 /// Struct for handling the torrent download.
 ///
@@ -20,6 +26,7 @@ pub struct TorrentHandler {
     config: Cfg,
     logger_sender: LoggerSender,
     torrent_status: Arc<AtomicTorrentStatus>,
+    torrent_status_receiver: Receiver<usize>,
 }
 
 /// Posible torrent handler errors.
@@ -27,17 +34,22 @@ pub struct TorrentHandler {
 pub enum TorrentHandlerError {
     TrackerError(TrackerHandlerError),
     TorrentStatusError(AtomicTorrentStatusError),
+    TorrentStatusRecvError(mpsc::RecvError),
     StartingServerError(BtServerError),
 }
 
 impl TorrentHandler {
     /// Creates a new `TorrentHandler` from a torrent, a config and a logger sender.
     pub fn new(torrent: Torrent, config: Cfg, logger_sender: LoggerSender) -> Self {
+        let (torrent_status, torrent_status_receiver) =
+            AtomicTorrentStatus::new(&torrent, config.clone());
+
         Self {
-            torrent_status: Arc::new(AtomicTorrentStatus::new(&torrent, config.clone())),
+            torrent_status: Arc::new(torrent_status),
             torrent,
             config,
             logger_sender,
+            torrent_status_receiver,
         }
     }
 
@@ -49,6 +61,7 @@ impl TorrentHandler {
     ///
     /// - `TrackerErr` if there was a problem connecting to the tracker or getting the peers.
     /// - `TorrentStatusError` if there was a problem using the `Torrent Status`.
+    /// - `TorrentStatusRecvError` if there was a problem receiving from the receiver of `Torrent Status`.
     pub fn handle(&mut self) -> Result<(), TorrentHandlerError> {
         self.start_server()?;
 
@@ -61,18 +74,24 @@ impl TorrentHandler {
             let peer_list = self.get_peers_list(&tracker_handler)?;
             self.logger_sender.info("Tracker peer list obteined.");
 
-            // Iniciar conección con cada peer
+            // Start connection with each peer
             for peer in peer_list {
-                let mut current_peers = self.torrent_status.current_peers();
-                let mut is_finished = self.torrent_status.is_finished();
+                let current_peers = self.torrent_status.current_peers();
 
-                // Si se llego  máximo de peers simultaneos esperar hasta que se libere uno
-                while (current_peers >= self.config.max_peers_per_torrent as usize) && !is_finished
-                {
-                    thread::yield_now();
-
-                    current_peers = self.torrent_status.current_peers();
-                    is_finished = self.torrent_status.is_finished();
+                // If we reached the maximum number of simultaneous peers, wait until the status tells us that one disconnected.
+                if current_peers >= self.config.max_peers_per_torrent as usize {
+                    // This while loop is done to prevent creating more peers than allowed when multiple peers are disconnected at the same time.
+                    while self
+                        .torrent_status_receiver
+                        .recv()
+                        .map_err(TorrentHandlerError::TorrentStatusRecvError)?
+                        != self.config.max_peers_per_torrent as usize - 1
+                    {
+                        continue;
+                    }
+                }
+                if self.torrent_status.is_finished() {
+                    break;
                 }
                 self.connect_to_peer(peer);
             }

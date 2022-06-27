@@ -9,7 +9,8 @@ use std::{
     collections::HashMap,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Mutex, MutexGuard,
+        mpsc::{sync_channel, Receiver, SyncSender},
+        {Mutex, MutexGuard},
     },
 };
 
@@ -22,13 +23,17 @@ use std::{
 ///
 /// It is `Atomic`, meaning that it can be accessed from multiple threads at the same time.
 ///
-/// To create a new `AtomicTorrentStatus`, use the `new()` function.
+/// To create a new `AtomicTorrentStatus`, use the `new()` method.
+///
+/// The `new()` method also returns a `Receiver` that can be used to know when a peer disconnects. This is useful if there is a limit for how many peers can be created,
+/// so the thread can be blocked until the status notifies that a peer has disconnected.
 #[derive(Debug)]
 pub struct AtomicTorrentStatus {
     torrent: Torrent,
     pieces_status: Mutex<HashMap<u32, PieceStatus>>,
     current_peers: AtomicUsize,
     config: Cfg,
+    torrent_status_sender: SyncSender<usize>,
     finished_pieces: AtomicUsize,
     downloading_pieces: AtomicUsize,
     free_pieces: AtomicUsize,
@@ -56,24 +61,34 @@ pub enum AtomicTorrentStatusError {
 }
 
 impl AtomicTorrentStatus {
-    /// Creates a new `AtomicTorrentStatus` from a `Torrent`.
-    pub fn new(torrent: &Torrent, config: Cfg) -> Self {
+    /// Creates a new `AtomicTorrentStatus` from a `Torrent` and a `config`.
+    ///
+    /// Returns a tuple with the `AtomicTorrentStatus` and a channel `Receiver` that can be used optionally to receive when a peer disconects from the torrent status.
+    /// The value sent on the channel is the current number of peers connected.
+    pub fn new(torrent: &Torrent, config: Cfg) -> (Self, Receiver<usize>) {
         let mut pieces_status: HashMap<u32, PieceStatus> = HashMap::new();
-
         let total_pieces = torrent.total_pieces();
+
         for index in 0..total_pieces {
             pieces_status.insert(index as u32, PieceStatus::Free);
         }
 
-        Self {
-            torrent: torrent.clone(),
-            pieces_status: Mutex::new(pieces_status),
-            current_peers: AtomicUsize::new(0),
-            config,
-            finished_pieces: AtomicUsize::new(0),
-            downloading_pieces: AtomicUsize::new(0),
-            free_pieces: AtomicUsize::new(total_pieces as usize),
-        }
+        let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
+            sync_channel(config.max_peers_per_torrent as usize);
+
+        (
+            Self {
+                torrent: torrent.clone(),
+                pieces_status: Mutex::new(pieces_status),
+                current_peers: AtomicUsize::new(0),
+                config,
+                torrent_status_sender,
+                finished_pieces: AtomicUsize::new(0),
+                downloading_pieces: AtomicUsize::new(0),
+                free_pieces: AtomicUsize::new(total_pieces as usize),
+            },
+            torrent_status_receiver,
+        )
     }
 
     /// Returns true if the torrent download finished.
@@ -111,6 +126,13 @@ impl AtomicTorrentStatus {
             return Err(AtomicTorrentStatusError::NoPeersConnected);
         }
         self.current_peers.fetch_sub(1, Ordering::Relaxed);
+
+        // If the value couldn't be sent, it means the channel was closed.
+        if self
+            .torrent_status_sender
+            .send(self.current_peers.load(Ordering::Relaxed))
+            .is_ok()
+        {}
         Ok(())
     }
 
@@ -286,17 +308,17 @@ mod tests {
     #[test]
     fn test_is_not_finished() {
         let torrent = create_test_torrent("test_is_not_finished");
-
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         assert!(!status.is_finished());
     }
 
     #[test]
     fn test_is_finished() {
         let torrent = create_test_torrent("test_is_finished");
-        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = AtomicTorrentStatus::new(&torrent, config.clone());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         for _ in 0..(torrent.info.length / torrent.info.piece_length) {
             let index = status
                 .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
@@ -316,15 +338,17 @@ mod tests {
     fn test_starting_current_peers() {
         let torrent = create_test_torrent("test_starting_current_peers");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         assert_eq!(0, status.current_peers());
     }
 
     #[test]
     fn test_peer_connected() {
         let torrent = create_test_torrent("test_peer_connected");
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         status.peer_connected();
         assert_eq!(1, status.current_peers());
     }
@@ -332,8 +356,9 @@ mod tests {
     #[test]
     fn test_peer_disconnected() {
         let torrent = create_test_torrent("test_peer_disconnected");
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
         status.peer_connected();
         status.peer_connected();
         status.peer_disconnected().unwrap();
@@ -344,7 +369,8 @@ mod tests {
     fn test_peer_disconnected_error() {
         let torrent = create_test_torrent("test_peer_disconnected_error");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         assert!(status.peer_disconnected().is_err());
     }
 
@@ -352,7 +378,8 @@ mod tests {
     fn test_select_piece() {
         let torrent = create_test_torrent("test_piece_downloaded");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
@@ -367,7 +394,8 @@ mod tests {
     fn test_no_pieces_to_select() {
         let torrent = create_test_torrent("test_no_pieces_to_select");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = status
             .select_piece(&Bitfield::new(vec![0b00000000, 0b00000000]))
             .unwrap();
@@ -377,9 +405,9 @@ mod tests {
     #[test]
     fn test_piece_downloaded() {
         let torrent = create_test_torrent("test_piece_downloaded");
-        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = AtomicTorrentStatus::new(&torrent, config.clone());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
@@ -400,7 +428,8 @@ mod tests {
     fn test_piece_aborted() {
         let torrent = create_test_torrent("test_piece_aborted");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
@@ -416,7 +445,8 @@ mod tests {
     fn test_bad_index() {
         let torrent = create_test_torrent("test_bad_index");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = 1000;
         assert!(status.piece_downloaded(index, vec![]).is_err());
     }
@@ -425,10 +455,8 @@ mod tests {
     fn test_multiple_threads_current_peers() {
         let torrent = create_test_torrent("test_multiple_threads");
 
-        let status = Arc::new(AtomicTorrentStatus::new(
-            &torrent,
-            Cfg::new(CONFIG_PATH).unwrap(),
-        ));
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = Arc::new(create_status_whitout_receiver(&torrent, config.clone()));
         let mut joins = Vec::new();
 
         for _ in 0..10 {
@@ -445,9 +473,9 @@ mod tests {
     #[test]
     fn test_multiple_threads_piece_status() {
         let torrent = create_test_torrent("test_multiple_threads_piece_status");
-        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = Arc::new(AtomicTorrentStatus::new(&torrent, config.clone()));
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = Arc::new(create_status_whitout_receiver(&torrent, config.clone()));
         let mut joins = Vec::new();
 
         for _ in 0..10 {
@@ -476,7 +504,8 @@ mod tests {
     fn test_bad_downloaded() {
         let torrent = create_test_torrent("test_bad_downloaded");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = 0;
         assert!(status.piece_downloaded(index, vec![]).is_err());
     }
@@ -485,7 +514,8 @@ mod tests {
     fn test_bad_abort() {
         let torrent = create_test_torrent("test_bad_abort");
 
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = 0;
         assert!(status.piece_aborted(index).is_err());
     }
@@ -493,9 +523,9 @@ mod tests {
     #[test]
     fn test_remaining_pieces() {
         let torrent = create_test_torrent("test_remaining_pieces");
-        let config = Cfg::new(CONFIG_PATH).unwrap();
 
-        let status = AtomicTorrentStatus::new(&torrent, config.clone());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
 
         let total_pieces = (torrent.info.length / torrent.info.piece_length) as usize;
 
@@ -519,8 +549,8 @@ mod tests {
     #[test]
     fn test_downloading_pieces() {
         let torrent = create_test_torrent("test_downloading_pieces");
-
-        let status = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
 
         let _ = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
@@ -534,8 +564,7 @@ mod tests {
     fn test_downloaded_pieces() {
         let torrent = create_test_torrent("test_downloaded_pieces");
         let config = Cfg::new(CONFIG_PATH).unwrap();
-
-        let status = AtomicTorrentStatus::new(&torrent, config.clone());
+        let status = create_status_whitout_receiver(&torrent, config.clone());
 
         let index = status
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
@@ -549,6 +578,17 @@ mod tests {
             config.download_directory, torrent.info.name
         ))
         .unwrap();
+    }
+
+    #[test]
+    fn test_torrent_status_channel() {
+        let torrent = create_test_torrent("test_torrent_status_channel");
+
+        let (status, receiver) = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        status.peer_connected();
+        status.peer_connected();
+        status.peer_disconnected().unwrap();
+        assert_eq!(receiver.recv().unwrap(), 1);
     }
 
     // Auxiliary functions
@@ -566,5 +606,10 @@ mod tests {
             info,
             info_hash: "info_hash".to_string(),
         }
+    }
+
+    fn create_status_whitout_receiver(torrent: &Torrent, config: Cfg) -> AtomicTorrentStatus {
+        let (status, _) = AtomicTorrentStatus::new(&torrent, config);
+        status
     }
 }
