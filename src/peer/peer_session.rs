@@ -337,7 +337,7 @@ impl PeerSession {
         // TODO: solucionar el problema de que el peer puede mandar un mensaje de mas de 16393 bytes. Cuando esta mandando cualquiera.
         // Issue: https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/issues/101
         // Ahora que en el server la iniciacion esta dentro del Ok() esta fallando en el handshake, mirar ahi tambien.
-        if len > BLOCK_SIZE {
+        if len > BLOCK_SIZE * 10 {
             // handshake err temporal
             return Err(PeerSessionError::HandshakeError);
         }
