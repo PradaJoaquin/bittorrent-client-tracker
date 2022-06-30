@@ -7,6 +7,7 @@ use std::{
     net::TcpStream,
 };
 
+use chrono::{DateTime, Local};
 use sha1::{Digest, Sha1};
 
 use crate::config::cfg::Cfg;
@@ -38,6 +39,7 @@ pub enum PeerSessionError {
     ErrorGettingPiece(AtomicTorrentStatusError),
     PieceHashDoesNotMatch,
     NoPiecesLeftToDownloadInThisPeer,
+    ErrorGettingSessionsStatus(AtomicTorrentStatusError),
     PeerNotInterested,
     ErrorGettingBitfield(AtomicTorrentStatusError),
 }
@@ -128,7 +130,7 @@ impl PeerSession {
             Ok(_) => Ok(()),
             Err(e) => {
                 self.torrent_status
-                    .peer_disconnected()
+                    .peer_disconnected(&self.peer)
                     .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
                 Err(e)
             }
@@ -255,6 +257,8 @@ impl PeerSession {
                 entire_blocks_in_piece - blocks_downloaded
             };
 
+            let download_start_time = Local::now();
+
             // request blocks
             for block in 0..blocks_to_download {
                 self.request_piece(
@@ -274,6 +278,13 @@ impl PeerSession {
                     blocks_downloaded += 1;
                 }
             }
+            // Calculate download speed
+            let download_speed = self.calculate_kilobits_per_second(
+                download_start_time,
+                (blocks_to_download * BLOCK_SIZE).into(),
+            );
+            self.status.download_speed = download_speed;
+            self.update_peer_status()?;
         }
         Ok(entire_blocks_in_piece)
     }
@@ -317,6 +328,19 @@ impl PeerSession {
                 (last_piece_size as f64 / BLOCK_SIZE as f64).floor() as u32
             }
         }
+    }
+
+    fn calculate_kilobits_per_second(&self, start_time: DateTime<Local>, size: u64) -> f64 {
+        let elapsed_time = Local::now().signed_duration_since(start_time);
+        let elapsed_time_in_seconds = elapsed_time.num_milliseconds() as f64 / 1000.0;
+        (size as f64 / elapsed_time_in_seconds) * 8.0 / 1024.0
+    }
+
+    fn update_peer_status(&mut self) -> Result<(), PeerSessionError> {
+        self.torrent_status
+            .update_peer_session_status(&self.peer, &self.status)
+            .map_err(PeerSessionError::ErrorGettingSessionsStatus)?;
+        Ok(())
     }
 
     /// Reads & handles a message from the stream.
@@ -506,7 +530,7 @@ impl PeerSession {
         self.piece.append(&mut block.to_vec());
     }
 
-    /// Handles a piece message received from the peer.
+    /// Handles a request message received from the peer.
     fn handle_request(
         &mut self,
         message: Message,
@@ -525,12 +549,19 @@ impl PeerSession {
 
         let offset = index * self.torrent.piece_length() + begin;
 
+        let upload_start_time = Local::now();
+
         let block = self
             .torrent_status
             .get_piece(index, offset as u64, length as usize)
             .map_err(PeerSessionError::ErrorGettingPiece)?;
 
         self.send_piece(index, begin, &block, stream)?;
+
+        // Calculate upload speed
+        let upload_speed = self.calculate_kilobits_per_second(upload_start_time, (length).into());
+        self.status.upload_speed = upload_speed;
+        self.update_peer_status()?;
         Ok(())
     }
 

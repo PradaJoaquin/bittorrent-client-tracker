@@ -93,7 +93,7 @@ impl TorrentHandler {
                 if self.torrent_status.is_finished() {
                     break;
                 }
-                self.connect_to_peer(peer);
+                self.connect_to_peer(peer)?;
             }
         }
         self.logger_sender.info("Torrent download finished.");
@@ -135,9 +135,10 @@ impl TorrentHandler {
         Ok(tracker_response.peers)
     }
 
-    fn connect_to_peer(&mut self, peer: BtPeer) {
-        self.torrent_status.peer_connected();
-
+    fn connect_to_peer(&mut self, peer: BtPeer) -> Result<(), TorrentHandlerError> {
+        self.torrent_status
+            .peer_connected(&peer)
+            .map_err(TorrentHandlerError::TorrentStatusError)?;
         let peer_name = format!("{}:{}", peer.ip, peer.port);
 
         let mut peer_session = PeerSession::new(
@@ -164,5 +165,6 @@ impl TorrentHandler {
             Ok(_) => (),
             Err(err) => self.logger_sender.error(&format!("{:?}", err)),
         }
+        Ok(())
     }
 }

@@ -219,8 +219,6 @@ mod tests {
         );
         let response = http_handler.http_request().unwrap();
 
-        println!("{:?}", response);
-
         // <title>Invalid Request</title>
         assert!(response.starts_with(&[
             60, 116, 105, 116, 108, 101, 62, 73, 110, 118, 97, 108, 105, 100, 32, 82, 101, 113,

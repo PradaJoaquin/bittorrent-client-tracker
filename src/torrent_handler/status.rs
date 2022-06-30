@@ -1,6 +1,6 @@
 use crate::{
     config::cfg::Cfg,
-    peer::peer_message::Bitfield,
+    peer::{bt_peer::BtPeer, peer_message::Bitfield, session_status::SessionStatus},
     storage_manager::manager::{retrieve_block, save_piece},
     torrent_parser::torrent::Torrent,
 };
@@ -34,6 +34,7 @@ pub struct AtomicTorrentStatus {
     current_peers: AtomicUsize,
     config: Cfg,
     torrent_status_sender: SyncSender<usize>,
+    sessions_status: Mutex<HashMap<String, SessionStatus>>,
     finished_pieces: AtomicUsize,
     downloading_pieces: AtomicUsize,
     free_pieces: AtomicUsize,
@@ -52,6 +53,7 @@ pub enum PieceStatus {
 pub enum AtomicTorrentStatusError {
     PoisonedPiecesStatusLock,
     PoisonedCurrentPeersLock,
+    PoisonedSessionsStatusLock,
     InvalidPieceIndex,
     NoPeersConnected,
     PieceWasNotDownloading,
@@ -67,14 +69,16 @@ impl AtomicTorrentStatus {
     /// The value sent on the channel is the current number of peers connected.
     pub fn new(torrent: &Torrent, config: Cfg) -> (Self, Receiver<usize>) {
         let mut pieces_status: HashMap<u32, PieceStatus> = HashMap::new();
+        let sessions_status: HashMap<String, SessionStatus> = HashMap::new();
+
+        let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
+            sync_channel(config.max_peers_per_torrent as usize);
+
         let total_pieces = torrent.total_pieces();
 
         for index in 0..total_pieces {
             pieces_status.insert(index as u32, PieceStatus::Free);
         }
-
-        let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
-            sync_channel(config.max_peers_per_torrent as usize);
 
         (
             Self {
@@ -83,6 +87,7 @@ impl AtomicTorrentStatus {
                 current_peers: AtomicUsize::new(0),
                 config,
                 torrent_status_sender,
+                sessions_status: Mutex::new(sessions_status),
                 finished_pieces: AtomicUsize::new(0),
                 downloading_pieces: AtomicUsize::new(0),
                 free_pieces: AtomicUsize::new(total_pieces as usize),
@@ -112,20 +117,31 @@ impl AtomicTorrentStatus {
     }
 
     /// Adds a new peer to the current number of peers.
-    pub fn peer_connected(&self) {
+    ///
+    /// # Errors
+    /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
+    pub fn peer_connected(&self, peer: &BtPeer) -> Result<(), AtomicTorrentStatusError> {
         self.current_peers.fetch_add(1, Ordering::Relaxed);
+        let mut peer_status = self.lock_session_status()?;
+        let peer_name = format!("{}:{}", peer.ip, peer.port);
+        peer_status.insert(peer_name, SessionStatus::default());
+        Ok(())
     }
 
     /// Removes a peer from the current number of peers.
     ///
     /// # Errors
-    /// - `PoisonedCurrentPeersLock` if the lock on the `current_peers` field is poisoned.
+    /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
     /// - `NoPeersConnected` if there are no peers connected.
-    pub fn peer_disconnected(&self) -> Result<(), AtomicTorrentStatusError> {
+    pub fn peer_disconnected(&self, peer: &BtPeer) -> Result<(), AtomicTorrentStatusError> {
+        let mut peer_status = self.lock_session_status()?;
         if self.current_peers.load(Ordering::Relaxed) == 0 {
             return Err(AtomicTorrentStatusError::NoPeersConnected);
         }
         self.current_peers.fetch_sub(1, Ordering::Relaxed);
+
+        let peer_name = format!("{}:{}", peer.ip, peer.port);
+        peer_status.remove(&peer_name);
 
         // If the value couldn't be sent, it means the channel was closed.
         if self
@@ -139,6 +155,55 @@ impl AtomicTorrentStatus {
     /// Returns the current number of peers.
     pub fn current_peers(&self) -> usize {
         self.current_peers.load(Ordering::Relaxed)
+    }
+
+    /// Updates the peer session status of a peer.
+    ///
+    /// # Errors
+    /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
+    pub fn update_peer_session_status(
+        &self,
+        peer: &BtPeer,
+        status: &SessionStatus,
+    ) -> Result<(), AtomicTorrentStatusError> {
+        let mut peer_status = self.lock_session_status()?;
+        let peer_name = format!("{}:{}", peer.ip, peer.port);
+        peer_status.insert(peer_name, status.clone());
+        Ok(())
+    }
+
+    /// Returns the sessions status of all peers connected to the torrent.
+    ///
+    /// # Errors
+    /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
+    pub fn get_sessions_status(
+        &self,
+    ) -> Result<HashMap<String, SessionStatus>, AtomicTorrentStatusError> {
+        Ok(self.lock_session_status()?.clone())
+    }
+
+    /// Returns the current download speed of the torrent in kilobits per second.
+    ///
+    /// # Errors
+    /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
+    pub fn torrent_download_speed(&self) -> Result<f64, AtomicTorrentStatusError> {
+        Ok(self
+            .lock_session_status()?
+            .values()
+            .map(|peer_session| peer_session.download_speed)
+            .sum())
+    }
+
+    /// Returns the current upload speed of the torrent in kilobits per second.
+    ///
+    /// # Errors
+    /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
+    pub fn torrent_upload_speed(&self) -> Result<f64, AtomicTorrentStatusError> {
+        Ok(self
+            .lock_session_status()?
+            .values()
+            .map(|peer_session| peer_session.upload_speed)
+            .sum())
     }
 
     /// Returns the index of a piece that can be downloaded from a peer `Bitfield` passed by parameter.
@@ -293,6 +358,14 @@ impl AtomicTorrentStatus {
             .lock()
             .map_err(|_| AtomicTorrentStatusError::PoisonedPiecesStatusLock)
     }
+
+    fn lock_session_status(
+        &self,
+    ) -> Result<MutexGuard<HashMap<String, SessionStatus>>, AtomicTorrentStatusError> {
+        self.sessions_status
+            .lock()
+            .map_err(|_| AtomicTorrentStatusError::PoisonedSessionsStatusLock)
+    }
 }
 
 #[cfg(test)]
@@ -346,32 +419,35 @@ mod tests {
     #[test]
     fn test_peer_connected() {
         let torrent = create_test_torrent("test_peer_connected");
+        let peer = create_test_peer("192.0".to_string());
+
         let config = Cfg::new(CONFIG_PATH).unwrap();
         let status = create_status_whitout_receiver(&torrent, config.clone());
-
-        status.peer_connected();
+        status.peer_connected(&peer).unwrap();
         assert_eq!(1, status.current_peers());
     }
 
     #[test]
     fn test_peer_disconnected() {
         let torrent = create_test_torrent("test_peer_disconnected");
+        let peer = create_test_peer("192.0".to_string());
+
         let config = Cfg::new(CONFIG_PATH).unwrap();
         let status = create_status_whitout_receiver(&torrent, config.clone());
-
-        status.peer_connected();
-        status.peer_connected();
-        status.peer_disconnected().unwrap();
+        status.peer_connected(&peer).unwrap();
+        status.peer_connected(&peer).unwrap();
+        status.peer_disconnected(&peer).unwrap();
         assert_eq!(1, status.current_peers());
     }
 
     #[test]
     fn test_peer_disconnected_error() {
         let torrent = create_test_torrent("test_peer_disconnected_error");
+        let peer = create_test_peer("192.0".to_string());
 
         let config = Cfg::new(CONFIG_PATH).unwrap();
         let status = create_status_whitout_receiver(&torrent, config.clone());
-        assert!(status.peer_disconnected().is_err());
+        assert!(status.peer_disconnected(&peer).is_err());
     }
 
     #[test]
@@ -461,7 +537,8 @@ mod tests {
 
         for _ in 0..10 {
             let status_cloned = status.clone();
-            let join = thread::spawn(move || status_cloned.peer_connected());
+            let peer = create_test_peer("192.0".to_string());
+            let join = thread::spawn(move || status_cloned.peer_connected(&peer).unwrap());
             joins.push(join);
         }
         for join in joins {
@@ -583,12 +660,63 @@ mod tests {
     #[test]
     fn test_torrent_status_channel() {
         let torrent = create_test_torrent("test_torrent_status_channel");
+        let peer = create_test_peer("192.0".to_string());
 
         let (status, receiver) = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
-        status.peer_connected();
-        status.peer_connected();
-        status.peer_disconnected().unwrap();
+        status.peer_connected(&peer).unwrap();
+        status.peer_connected(&peer).unwrap();
+        status.peer_disconnected(&peer).unwrap();
         assert_eq!(receiver.recv().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_torrent_download_speed() {
+        let torrent = create_test_torrent("test_torrent_download_speed");
+        let peer1 = create_test_peer("192.0".to_string());
+        let peer2 = create_test_peer("932.0".to_string());
+
+        let mut peer_session1 = create_test_peer_session_status();
+        peer_session1.download_speed = 1500.0;
+
+        let mut peer_session2 = create_test_peer_session_status();
+        peer_session2.download_speed = 2500.0;
+
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
+        status.peer_connected(&peer1).unwrap();
+        status.peer_connected(&peer2).unwrap();
+        status
+            .update_peer_session_status(&peer1, &peer_session1)
+            .unwrap();
+        status
+            .update_peer_session_status(&peer2, &peer_session2)
+            .unwrap();
+        assert_eq!(status.torrent_download_speed().unwrap(), 4000.0);
+    }
+
+    #[test]
+    fn test_torrent_upload_speed() {
+        let torrent = create_test_torrent("test_torrent_upload_speed");
+        let peer1 = create_test_peer("192.0".to_string());
+        let peer2 = create_test_peer("932.0".to_string());
+
+        let mut peer_session1 = create_test_peer_session_status();
+        peer_session1.upload_speed = 100.0;
+
+        let mut peer_session2 = create_test_peer_session_status();
+        peer_session2.upload_speed = 200.0;
+
+        let config = Cfg::new(CONFIG_PATH).unwrap();
+        let status = create_status_whitout_receiver(&torrent, config.clone());
+        status.peer_connected(&peer1).unwrap();
+        status.peer_connected(&peer2).unwrap();
+        status
+            .update_peer_session_status(&peer1, &peer_session1)
+            .unwrap();
+        status
+            .update_peer_session_status(&peer2, &peer_session2)
+            .unwrap();
+        assert_eq!(status.torrent_upload_speed().unwrap(), 300.0);
     }
 
     // Auxiliary functions
@@ -606,6 +734,18 @@ mod tests {
             info,
             info_hash: "info_hash".to_string(),
         }
+    }
+
+    fn create_test_peer(ip: String) -> BtPeer {
+        BtPeer {
+            peer_id: Some(vec![0x00]),
+            ip: ip,
+            port: 0,
+        }
+    }
+
+    fn create_test_peer_session_status() -> SessionStatus {
+        SessionStatus::default()
     }
 
     fn create_status_whitout_receiver(torrent: &Torrent, config: Cfg) -> AtomicTorrentStatus {

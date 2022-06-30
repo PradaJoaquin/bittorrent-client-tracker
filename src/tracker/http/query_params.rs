@@ -46,8 +46,6 @@ mod tests {
         let peer_id = constants::PEER_ID;
         let query_params = QueryParams::new(info_hash.clone(), client_port, length);
 
-        println!("{:?}", query_params.build());
-
         assert_eq!(
             query_params.build(),
             format!(
