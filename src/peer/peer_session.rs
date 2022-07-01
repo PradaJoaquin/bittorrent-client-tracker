@@ -1,47 +1,49 @@
-use std::fmt::Write;
-use std::io;
-use std::sync::Arc;
-use std::time::Duration;
 use std::{
-    io::{Read, Write as IOWrite},
+    fmt::Write,
+    io::{self, Read, Write as IOWrite},
     net::TcpStream,
+    sync::Arc,
+    time::Duration,
 };
 
 use chrono::{DateTime, Local};
 use sha1::{Digest, Sha1};
 
-use crate::config::cfg::Cfg;
-use crate::logger::logger_sender::LoggerSender;
-use crate::torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
-use crate::torrent_parser::torrent::Torrent;
-use crate::tracker::http::constants::PEER_ID;
+use crate::{
+    config::cfg::Cfg,
+    logger::logger_sender::LoggerSender,
+    torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError},
+    torrent_parser::torrent::Torrent,
+};
 
-use super::bt_peer::BtPeer;
-use super::handshake::Handshake;
-use super::peer_message::{Bitfield, Message, MessageError, MessageId, Request};
-use super::session_status::SessionStatus;
+use super::{
+    bt_peer::BtPeer,
+    message_handler::{MessageHandler, MessageHandlerError},
+    peer_message::{Bitfield, Message, MessageError, MessageId},
+    session_status::SessionStatus,
+};
 
 const BLOCK_SIZE: u32 = 16384;
 
 #[derive(Debug)]
 pub enum PeerSessionError {
-    HandshakeError,
-    MessageError(MessageId),
     ErrorReadingMessage(io::Error),
     MessageDoesNotExist(MessageError),
     CouldNotConnectToPeer,
     ErrorDisconnectingFromPeer(AtomicTorrentStatusError),
     ErrorAbortingPiece(AtomicTorrentStatusError),
     ErrorSelectingPiece(AtomicTorrentStatusError),
-    ErrorGettingCurrentDownloadingPieces(AtomicTorrentStatusError),
-    ErrorGettingRemainingPieces(AtomicTorrentStatusError),
     ErrorNotifyingPieceDownloaded(AtomicTorrentStatusError),
-    ErrorGettingPiece(AtomicTorrentStatusError),
     PieceHashDoesNotMatch,
     NoPiecesLeftToDownloadInThisPeer,
+    ErrorGettingBitfield(AtomicTorrentStatusError),
+    ErrorGettingPiece(AtomicTorrentStatusError),
     ErrorGettingSessionsStatus(AtomicTorrentStatusError),
     PeerNotInterested,
-    ErrorGettingBitfield(AtomicTorrentStatusError),
+    MessageHandlerError(MessageHandlerError),
+    MessageError(MessageId),
+    MessageLengthTooLong,
+    ErrorSettingStreamTimeout,
 }
 
 /// A PeerSession represents a connection to a peer.
@@ -57,6 +59,7 @@ pub struct PeerSession {
     current_piece: u32,
     config: Cfg,
     logger_sender: LoggerSender,
+    message_handler: MessageHandler,
 }
 
 impl PeerSession {
@@ -73,6 +76,13 @@ impl PeerSession {
                 .map_err(PeerSessionError::ErrorGettingBitfield)?
                 .get_vec(),
         );
+
+        let message_handler = MessageHandler::new(
+            torrent.clone(),
+            torrent_status.clone(),
+            logger_sender.clone(),
+        );
+
         Ok(PeerSession {
             torrent,
             peer,
@@ -83,8 +93,12 @@ impl PeerSession {
             current_piece: 0,
             config,
             logger_sender,
+            message_handler,
         })
     }
+
+    /// ------------------------------------------------------------------------------------------------
+    /// Uploading
 
     /// Handshakes with an incoming leecher.
     pub fn handshake_incoming_leecher(
@@ -93,14 +107,23 @@ impl PeerSession {
     ) -> Result<(), PeerSessionError> {
         self.set_stream_timeouts(stream)?;
 
-        self.receive_handshake(stream)?;
-        self.send_handshake(stream)?;
+        self.message_handler
+            .receive_handshake(stream)
+            .map_err(PeerSessionError::MessageHandlerError)?;
+
+        self.message_handler
+            .send_handshake(stream)
+            .map_err(PeerSessionError::MessageHandlerError)?;
+
         self.logger_sender.info(&format!(
             "IP: {}:{} Handshake successful",
             self.peer.ip, self.peer.port
         ));
 
-        self.send_bitfield(stream)?;
+        self.message_handler
+            .send_bitfield(stream)
+            .map_err(PeerSessionError::MessageHandlerError)?;
+
         self.logger_sender.info(&format!(
             "IP: {}:{} Bitfield sent",
             self.peer.ip, self.peer.port
@@ -124,7 +147,9 @@ impl PeerSession {
             // wait for the peer to send an interested message
             id = self.read_message_from_stream(stream)?;
         }
-        self.send_unchoked(stream)?;
+        self.message_handler
+            .send_unchoked(stream)
+            .map_err(PeerSessionError::MessageHandlerError)?;
 
         loop {
             self.update_bitfield(stream)?;
@@ -133,6 +158,9 @@ impl PeerSession {
             self.read_message_from_stream(stream)?;
         }
     }
+
+    /// ------------------------------------------------------------------------------------------------
+    /// Downloading
 
     /// Starts a connection to an outgoing seeder to start downloading pieces.
     ///
@@ -160,8 +188,13 @@ impl PeerSession {
         // set timeouts
         self.set_stream_timeouts(&mut stream)?;
 
-        self.send_handshake(&mut stream)?;
-        self.receive_handshake(&mut stream)?;
+        self.message_handler
+            .send_handshake(&mut stream)
+            .map_err(PeerSessionError::MessageHandlerError)?;
+
+        self.message_handler
+            .receive_handshake(&mut stream)
+            .map_err(PeerSessionError::MessageHandlerError)?;
 
         self.logger_sender.info("Handshake successful");
 
@@ -169,29 +202,17 @@ impl PeerSession {
             self.read_message_from_stream(&mut stream)?;
 
             if self.status.choked && !self.status.interested {
-                self.send_interested(&mut stream)?;
+                self.message_handler
+                    .send_interested(&mut stream)
+                    .map_err(PeerSessionError::MessageHandlerError)?;
+
+                self.status.interested = true;
             }
 
             if !self.status.choked && self.status.interested {
                 self.request_pieces(&mut stream)?;
             }
         }
-    }
-
-    fn set_stream_timeouts(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
-        stream
-            .set_read_timeout(Some(Duration::from_secs(
-                self.config.read_write_seconds_timeout,
-            )))
-            .map_err(|_| PeerSessionError::HandshakeError)?;
-
-        stream
-            .set_write_timeout(Some(Duration::from_secs(
-                self.config.read_write_seconds_timeout,
-            )))
-            .map_err(|_| PeerSessionError::HandshakeError)?;
-
-        Ok(())
     }
 
     fn request_pieces(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
@@ -205,7 +226,11 @@ impl PeerSession {
                 Some(piece_index) => {
                     self.current_piece = piece_index;
                     match self.download_piece(stream, piece_index) {
-                        Ok(_) => {}
+                        Ok(_) => {
+                            self.torrent_status
+                                .piece_downloaded(piece_index, &self.piece)
+                                .map_err(PeerSessionError::ErrorNotifyingPieceDownloaded)?;
+                        }
                         Err(e) => {
                             self.torrent_status
                                 .piece_aborted(piece_index)
@@ -231,7 +256,7 @@ impl PeerSession {
         &mut self,
         stream: &mut TcpStream,
         piece_index: u32,
-    ) -> Result<Vec<u8>, PeerSessionError> {
+    ) -> Result<(), PeerSessionError> {
         self.piece = vec![]; // reset piece
 
         let entire_blocks_in_piece = self.download_with_pipeline(piece_index, stream)?;
@@ -250,7 +275,7 @@ impl PeerSession {
             self.torrent.total_pieces()
         );
 
-        Ok(self.piece.clone())
+        Ok(())
     }
 
     /// Downloads a piece in 'chunks' of blocks.
@@ -266,36 +291,38 @@ impl PeerSession {
         let entire_blocks_in_piece = self.complete_blocks_in_torrent_piece(piece_index);
         let mut blocks_downloaded = 0;
         while blocks_downloaded < entire_blocks_in_piece {
-            let blocks_to_download = if (entire_blocks_in_piece - blocks_downloaded)
-                % self.config.pipelining_size
-                == 0
-            {
+            let remaining_blocks = entire_blocks_in_piece - blocks_downloaded;
+            let blocks_to_download = if remaining_blocks % self.config.pipelining_size == 0 {
                 self.config.pipelining_size
             } else {
-                entire_blocks_in_piece - blocks_downloaded
+                remaining_blocks
             };
 
             let download_start_time = Local::now();
 
             // request blocks
             for block in 0..blocks_to_download {
-                self.request_piece(
-                    piece_index,
-                    (block + blocks_downloaded) * BLOCK_SIZE,
-                    BLOCK_SIZE,
-                    stream,
-                )?;
+                self.message_handler
+                    .send_request(
+                        piece_index,
+                        (block + blocks_downloaded) * BLOCK_SIZE,
+                        BLOCK_SIZE,
+                        stream,
+                    )
+                    .map_err(PeerSessionError::MessageHandlerError)?;
             }
 
             // If we are in the endgame phase, and we already downloaded all the blocks, we send a cancel message.
             if self.torrent_status.is_finished() {
                 for block in 0..blocks_to_download {
-                    self.send_cancel(
-                        piece_index,
-                        (block + blocks_downloaded) * BLOCK_SIZE,
-                        BLOCK_SIZE,
-                        stream,
-                    )?;
+                    self.message_handler
+                        .send_cancel(
+                            piece_index,
+                            (block + blocks_downloaded) * BLOCK_SIZE,
+                            BLOCK_SIZE,
+                            stream,
+                        )
+                        .map_err(PeerSessionError::MessageHandlerError)?;
                 }
             }
 
@@ -330,12 +357,15 @@ impl PeerSession {
         let last_piece_index = self.torrent.total_pieces() - 1;
 
         if last_block_size != 0 && piece_index == last_piece_index {
-            self.request_piece(
-                piece_index,
-                entire_blocks_in_piece * BLOCK_SIZE,
-                last_block_size,
-                stream,
-            )?;
+            self.message_handler
+                .send_request(
+                    piece_index,
+                    entire_blocks_in_piece * BLOCK_SIZE,
+                    last_block_size,
+                    stream,
+                )
+                .map_err(PeerSessionError::MessageHandlerError)?;
+
             while self.read_message_from_stream(stream)? != MessageId::Piece {
                 continue;
             }
@@ -360,6 +390,9 @@ impl PeerSession {
         }
     }
 
+    /// ------------------------------------------------------------------------------------------------
+    /// Commons for download and upload
+
     fn update_bitfield(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
         let updated_bitfield = self
             .torrent_status
@@ -369,7 +402,9 @@ impl PeerSession {
         let indices = updated_bitfield.diff(&self.status.bitfield);
 
         for index in indices {
-            self.send_have(index, stream)?;
+            self.message_handler
+                .send_have(index, stream)
+                .map_err(PeerSessionError::MessageHandlerError)?;
         }
 
         let bitfield_msg = Message::new(MessageId::Bitfield, self.status.bitfield.get_vec());
@@ -411,8 +446,7 @@ impl PeerSession {
         // Issue: https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/issues/101
         // Ahora que en el server la iniciacion esta dentro del Ok() esta fallando en el handshake, mirar ahi tambien.
         if len > BLOCK_SIZE * 10 {
-            // handshake err temporal
-            return Err(PeerSessionError::HandshakeError);
+            return Err(PeerSessionError::MessageLengthTooLong);
         }
 
         if len == 0 {
@@ -433,150 +467,6 @@ impl PeerSession {
         Ok(id)
     }
 
-    /// Sends a handshake to the peer.
-    ///
-    /// It returns an error if the handshake could not be sent or the handshake was not successful.
-    fn send_handshake(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
-        let info_hash = self
-            .torrent
-            .get_info_hash_as_bytes()
-            .map_err(|_| PeerSessionError::HandshakeError)?;
-
-        let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
-        stream
-            .write_all(&handshake.as_bytes())
-            .map_err(|_| PeerSessionError::HandshakeError)?;
-        Ok(())
-    }
-
-    /// Reads a handshake from the peer.
-    fn receive_handshake(&mut self, stream: &mut TcpStream) -> Result<Handshake, PeerSessionError> {
-        let mut buffer = [0; 68];
-        stream
-            .read_exact(&mut buffer)
-            .map_err(|_| PeerSessionError::HandshakeError)?;
-
-        let handshake =
-            Handshake::from_bytes(&buffer).map_err(|_| PeerSessionError::HandshakeError)?;
-
-        let torrent_info_hash = self
-            .torrent
-            .get_info_hash_as_bytes()
-            .map_err(|_| PeerSessionError::HandshakeError)?;
-
-        if handshake.info_hash != torrent_info_hash {
-            return Err(PeerSessionError::HandshakeError);
-        }
-        Ok(handshake)
-    }
-
-    /// Sends a request message to the peer.
-    fn request_piece(
-        &self,
-        index: u32,
-        begin: u32,
-        length: u32,
-        mut stream: &TcpStream,
-    ) -> Result<(), PeerSessionError> {
-        let payload = Request::new(index, begin, length).as_bytes();
-
-        let request_msg = Message::new(MessageId::Request, payload);
-        stream
-            .write_all(&request_msg.as_bytes())
-            .map_err(|_| PeerSessionError::MessageError(MessageId::Request))?;
-        Ok(())
-    }
-
-    /// Sends an interested message to the peer.
-    fn send_interested(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
-        let interested_msg = Message::new(MessageId::Interested, vec![]);
-        stream
-            .write_all(&interested_msg.as_bytes())
-            .map_err(|_| PeerSessionError::MessageError(MessageId::Interested))?;
-
-        self.status.interested = true;
-
-        Ok(())
-    }
-
-    /// Sends a unchoked message to the peer.
-    fn send_unchoked(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
-        let unchoked_msg = Message::new(MessageId::Unchoke, vec![]);
-        stream
-            .write_all(&unchoked_msg.as_bytes())
-            .map_err(|_| PeerSessionError::MessageError(MessageId::Unchoke))?;
-        Ok(())
-    }
-
-    fn send_bitfield(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
-        self.status.bitfield = self
-            .torrent_status
-            .get_bitfield()
-            .map_err(PeerSessionError::ErrorGettingBitfield)?;
-
-        let bitfield_msg = Message::new(MessageId::Bitfield, self.status.bitfield.get_vec());
-        stream
-            .write_all(&bitfield_msg.as_bytes())
-            .map_err(|_| PeerSessionError::MessageError(MessageId::Bitfield))?;
-        Ok(())
-    }
-
-    /// Sends a cancel message to the peer.
-    fn send_cancel(
-        &mut self,
-        index: u32,
-        begin: u32,
-        length: u32,
-        stream: &mut TcpStream,
-    ) -> Result<(), PeerSessionError> {
-        let mut payload = vec![];
-        payload.extend(index.to_be_bytes());
-        payload.extend(begin.to_be_bytes());
-        payload.extend(length.to_be_bytes());
-        let cancel_msg = Message::new(MessageId::Cancel, payload);
-        stream
-            .write_all(&cancel_msg.as_bytes())
-            .map_err(|_| PeerSessionError::MessageError(MessageId::Cancel))?;
-
-        self.logger_sender
-            .info(&format!("Cancel piece: {} / Offset: {}", index, begin));
-        Ok(())
-    }
-
-    /// Sends a piece message to the peer.
-    fn send_piece(
-        &mut self,
-        index: u32,
-        begin: u32,
-        block: &[u8],
-        stream: &mut TcpStream,
-    ) -> Result<(), PeerSessionError> {
-        let mut payload = vec![];
-        payload.extend(index.to_be_bytes());
-        payload.extend(begin.to_be_bytes());
-        payload.extend(block);
-
-        let piece_msg = Message::new(MessageId::Piece, payload);
-        stream
-            .write_all(&piece_msg.as_bytes())
-            .map_err(|_| PeerSessionError::MessageError(MessageId::Piece))?;
-
-        self.logger_sender
-            .info(&format!("Sent piece: {} / Offset: {}", index, begin));
-
-        Ok(())
-    }
-
-    fn send_have(&mut self, index: usize, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
-        let mut payload = vec![];
-        payload.extend(index.to_be_bytes());
-        let have_msg = Message::new(MessageId::Have, payload);
-        stream
-            .write_all(&have_msg.as_bytes())
-            .map_err(|_| PeerSessionError::MessageError(MessageId::Have))?;
-        Ok(())
-    }
-
     /// Handles a message received from the peer.
     fn handle_message(
         &mut self,
@@ -584,44 +474,43 @@ impl PeerSession {
         stream: &mut TcpStream,
     ) -> Result<(), PeerSessionError> {
         match message.id {
-            MessageId::Unchoke => self.handle_unchoke(),
-            MessageId::Choke => self.handle_choke(),
-            MessageId::Bitfield => self.handle_bitfield(message),
-            MessageId::Piece => self.handle_piece(message),
+            MessageId::Unchoke => {
+                self.status.choked = false;
+            }
+            MessageId::Choke => {
+                self.status.choked = true;
+            }
+            MessageId::Bitfield => {
+                self.bitfield = self.message_handler.handle_bitfield(message);
+            }
+            MessageId::Piece => {
+                let mut block = self.message_handler.handle_piece(message);
+                self.piece.append(&mut block);
+            }
             MessageId::Request => self.handle_request(message, stream)?,
-            MessageId::Have => self.handle_have(message),
+            MessageId::Have => {
+                let index = self.message_handler.handle_have(message);
+                self.bitfield.set_bit(index as u32, true);
+            }
             _ => {} // TODO: handle other messages,
         }
         Ok(())
     }
 
-    /// Handles an unchoke message received from the peer.
-    fn handle_unchoke(&mut self) {
-        self.status.choked = false;
-    }
+    /// Sets read and write timeouts for the stream.
+    fn set_stream_timeouts(&self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(
+                self.config.read_write_seconds_timeout,
+            )))
+            .map_err(|_| PeerSessionError::ErrorSettingStreamTimeout)?;
 
-    fn handle_choke(&mut self) {
-        self.status.choked = true;
-    }
-
-    /// Handles a bitfield message received from the peer.
-    fn handle_bitfield(&mut self, message: Message) {
-        let bitfield = message.payload;
-        self.bitfield = Bitfield::new(bitfield);
-    }
-
-    /// Handles a piece message received from the peer.
-    fn handle_piece(&mut self, message: Message) {
-        let block = &message.payload[8..];
-
-        self.piece.append(&mut block.to_vec());
-    }
-
-    fn handle_have(&mut self, message: Message) {
-        let mut index: [u8; 4] = [0; 4];
-        index.copy_from_slice(&message.payload[0..4]);
-        let index = u32::from_be_bytes(index);
-        self.bitfield.set_bit(index as u32, true);
+        stream
+            .set_write_timeout(Some(Duration::from_secs(
+                self.config.read_write_seconds_timeout,
+            )))
+            .map_err(|_| PeerSessionError::ErrorSettingStreamTimeout)?;
+        Ok(())
     }
 
     /// Handles a piece message received from the peer.
@@ -650,7 +539,9 @@ impl PeerSession {
             .get_piece(index, offset as u64, length as usize)
             .map_err(PeerSessionError::ErrorGettingPiece)?;
 
-        self.send_piece(index, begin, &block, stream)?;
+        self.message_handler
+            .send_piece(index, begin, &block, stream)
+            .map_err(PeerSessionError::MessageHandlerError)?;
 
         // Calculate upload speed
         let upload_speed = self.calculate_kilobits_per_second(upload_start_time, (length).into());
@@ -673,9 +564,6 @@ impl PeerSession {
         let res_piece_hash = self.convert_to_hex_string(hash.as_slice());
 
         if real_piece_hash == res_piece_hash {
-            self.torrent_status
-                .piece_downloaded(piece_index, self.piece.clone())
-                .map_err(PeerSessionError::ErrorNotifyingPieceDownloaded)?;
             Ok(())
         } else {
             Err(PeerSessionError::PieceHashDoesNotMatch)

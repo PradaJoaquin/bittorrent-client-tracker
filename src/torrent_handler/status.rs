@@ -261,7 +261,7 @@ impl AtomicTorrentStatus {
     pub fn piece_downloaded(
         &self,
         index: u32,
-        piece: Vec<u8>,
+        piece: &[u8],
     ) -> Result<(), AtomicTorrentStatusError> {
         let mut piece_status = self.lock_pieces_status()?;
         match piece_status.get(&index) {
@@ -274,7 +274,7 @@ impl AtomicTorrentStatus {
         }
         save_piece(
             self.torrent.info.name.clone(),
-            &piece,
+            piece,
             (index * self.torrent.info.piece_length as u32) as u64,
             self.config.clone(),
         )
@@ -397,7 +397,7 @@ mod tests {
                 .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
                 .unwrap()
                 .unwrap();
-            status.piece_downloaded(index as u32, vec![]).unwrap();
+            status.piece_downloaded(index as u32, &[]).unwrap();
         }
         assert!(status.is_finished());
         fs::remove_file(format!(
@@ -488,7 +488,7 @@ mod tests {
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
             .unwrap();
-        status.piece_downloaded(index as u32, vec![]).unwrap();
+        status.piece_downloaded(index as u32, &[]).unwrap();
         assert_eq!(
             *status.pieces_status.lock().unwrap().get(&index).unwrap(),
             PieceStatus::Finished
@@ -524,7 +524,7 @@ mod tests {
         let config = Cfg::new(CONFIG_PATH).unwrap();
         let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = 1000;
-        assert!(status.piece_downloaded(index, vec![]).is_err());
+        assert!(status.piece_downloaded(index, &[]).is_err());
     }
 
     #[test]
@@ -562,7 +562,7 @@ mod tests {
                     .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
                     .unwrap()
                     .unwrap();
-                status_cloned.piece_downloaded(index, vec![]).unwrap();
+                status_cloned.piece_downloaded(index, &[]).unwrap();
             });
             joins.push(join);
         }
@@ -584,7 +584,7 @@ mod tests {
         let config = Cfg::new(CONFIG_PATH).unwrap();
         let status = create_status_whitout_receiver(&torrent, config.clone());
         let index = 0;
-        assert!(status.piece_downloaded(index, vec![]).is_err());
+        assert!(status.piece_downloaded(index, &[]).is_err());
     }
 
     #[test]
@@ -612,7 +612,7 @@ mod tests {
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
             .unwrap();
-        status.piece_downloaded(index, vec![]).unwrap();
+        status.piece_downloaded(index, &[]).unwrap();
 
         assert_eq!(remaining_starting_pieces, total_pieces);
         assert_eq!(status.remaining_pieces(), total_pieces - 1);
@@ -647,7 +647,7 @@ mod tests {
             .select_piece(&Bitfield::new(vec![0b11111111, 0b11111111]))
             .unwrap()
             .unwrap();
-        status.piece_downloaded(index, vec![]).unwrap();
+        status.piece_downloaded(index, &[]).unwrap();
 
         assert_eq!(status.downloaded_pieces(), 1);
         fs::remove_file(format!(
