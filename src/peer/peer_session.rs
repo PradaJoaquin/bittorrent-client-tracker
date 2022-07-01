@@ -214,6 +214,10 @@ impl PeerSession {
                             return Err(e);
                         }
                     }
+                    if self.status.choked {
+                        // If we are choked, we need to wait for the peer to unchoke us.
+                        return Ok(());
+                    }
                 }
                 None => {
                     return Err(PeerSessionError::NoPiecesLeftToDownloadInThisPeer);
@@ -281,6 +285,18 @@ impl PeerSession {
                     BLOCK_SIZE,
                     stream,
                 )?;
+            }
+
+            // If we are in the endgame phase, and we already downloaded all the blocks, we send a cancel message.
+            if self.torrent_status.is_finished() {
+                for block in 0..blocks_to_download {
+                    self.send_cancel(
+                        piece_index,
+                        (block + blocks_downloaded) * BLOCK_SIZE,
+                        BLOCK_SIZE,
+                        stream,
+                    )?;
+                }
             }
 
             // Check that we receive a piece message.
@@ -505,6 +521,28 @@ impl PeerSession {
         Ok(())
     }
 
+    /// Sends a cancel message to the peer.
+    fn send_cancel(
+        &mut self,
+        index: u32,
+        begin: u32,
+        length: u32,
+        stream: &mut TcpStream,
+    ) -> Result<(), PeerSessionError> {
+        let mut payload = vec![];
+        payload.extend(index.to_be_bytes());
+        payload.extend(begin.to_be_bytes());
+        payload.extend(length.to_be_bytes());
+        let cancel_msg = Message::new(MessageId::Cancel, payload);
+        stream
+            .write_all(&cancel_msg.as_bytes())
+            .map_err(|_| PeerSessionError::MessageError(MessageId::Cancel))?;
+
+        self.logger_sender
+            .info(&format!("Cancel piece: {} / Offset: {}", index, begin));
+        Ok(())
+    }
+
     /// Sends a piece message to the peer.
     fn send_piece(
         &mut self,
@@ -547,6 +585,7 @@ impl PeerSession {
     ) -> Result<(), PeerSessionError> {
         match message.id {
             MessageId::Unchoke => self.handle_unchoke(),
+            MessageId::Choke => self.handle_choke(),
             MessageId::Bitfield => self.handle_bitfield(message),
             MessageId::Piece => self.handle_piece(message),
             MessageId::Request => self.handle_request(message, stream)?,
@@ -559,6 +598,10 @@ impl PeerSession {
     /// Handles an unchoke message received from the peer.
     fn handle_unchoke(&mut self) {
         self.status.choked = false;
+    }
+
+    fn handle_choke(&mut self) {
+        self.status.choked = true;
     }
 
     /// Handles a bitfield message received from the peer.
