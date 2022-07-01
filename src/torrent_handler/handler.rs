@@ -5,7 +5,10 @@ use super::{
 use crate::{
     config::cfg::Cfg,
     logger::logger_sender::LoggerSender,
-    peer::{bt_peer::BtPeer, peer_session::PeerSession},
+    peer::{
+        bt_peer::BtPeer,
+        peer_session::{PeerSession, PeerSessionError},
+    },
     torrent_parser::torrent::Torrent,
     tracker::tracker_handler::{TrackerHandler, TrackerHandlerError},
 };
@@ -34,6 +37,7 @@ pub struct TorrentHandler {
 pub enum TorrentHandlerError {
     TrackerError(TrackerHandlerError),
     TorrentStatusError(AtomicTorrentStatusError),
+    PeerSessionError(PeerSessionError),
     TorrentStatusRecvError(mpsc::RecvError),
     StartingServerError(BtServerError),
 }
@@ -108,8 +112,7 @@ impl TorrentHandler {
             self.logger_sender.clone(),
         );
 
-        let builder =
-            thread::Builder::new().name(format!("Server for Torrent: {}", self.torrent.info.name));
+        let builder = thread::Builder::new().name(format!("Server: {}", self.torrent.info.name));
         let server_logger_sender = self.logger_sender.clone();
 
         let join = builder.spawn(move || match server.init() {
@@ -147,7 +150,8 @@ impl TorrentHandler {
             self.torrent_status.clone(),
             self.config.clone(),
             self.logger_sender.clone(),
-        );
+        )
+        .map_err(TorrentHandlerError::PeerSessionError)?;
 
         let builder = thread::Builder::new().name(format!(
             "Torrent: {} / Peer: {}",

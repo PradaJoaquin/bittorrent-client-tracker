@@ -72,7 +72,7 @@ impl AtomicTorrentStatus {
         let sessions_status: HashMap<String, SessionStatus> = HashMap::new();
 
         let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
-            sync_channel(config.max_peers_per_torrent as usize);
+            sync_channel((config.max_peers_per_torrent * 10) as usize);
 
         let total_pieces = torrent.total_pieces();
 
@@ -124,7 +124,7 @@ impl AtomicTorrentStatus {
         self.current_peers.fetch_add(1, Ordering::Relaxed);
         let mut peer_status = self.lock_session_status()?;
         let peer_name = format!("{}:{}", peer.ip, peer.port);
-        peer_status.insert(peer_name, SessionStatus::default());
+        peer_status.insert(peer_name, SessionStatus::new(Bitfield::new(vec![])));
         Ok(())
     }
 
@@ -745,7 +745,7 @@ mod tests {
     }
 
     fn create_test_peer_session_status() -> SessionStatus {
-        SessionStatus::default()
+        SessionStatus::new(Bitfield::new(vec![]))
     }
 
     fn create_status_whitout_receiver(torrent: &Torrent, config: Cfg) -> AtomicTorrentStatus {

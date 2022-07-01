@@ -87,7 +87,8 @@ impl BtServer {
             self.torrent_status.clone(),
             self.config.clone(),
             self.logger_sender.clone(),
-        );
+        )
+        .map_err(BtServerError::PeerSessionError)?;
 
         match peer_session.handshake_incoming_leecher(&mut stream) {
             Ok(_) => {

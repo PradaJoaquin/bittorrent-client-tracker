@@ -66,18 +66,24 @@ impl PeerSession {
         torrent_status: Arc<AtomicTorrentStatus>,
         config: Cfg,
         logger_sender: LoggerSender,
-    ) -> PeerSession {
-        PeerSession {
+    ) -> Result<Self, PeerSessionError> {
+        let our_bitfield = Bitfield::new(
+            torrent_status
+                .get_bitfield()
+                .map_err(PeerSessionError::ErrorGettingBitfield)?
+                .get_vec(),
+        );
+        Ok(PeerSession {
             torrent,
             peer,
             bitfield: Bitfield::new(vec![]),
-            status: SessionStatus::default(),
+            status: SessionStatus::new(our_bitfield),
             piece: vec![],
             torrent_status,
             current_piece: 0,
             config,
             logger_sender,
-        }
+        })
     }
 
     /// Handshakes with an incoming leecher.
@@ -89,10 +95,16 @@ impl PeerSession {
 
         self.receive_handshake(stream)?;
         self.send_handshake(stream)?;
-        self.logger_sender.info("Handshake successful");
+        self.logger_sender.info(&format!(
+            "IP: {}:{} Handshake successful",
+            self.peer.ip, self.peer.port
+        ));
 
         self.send_bitfield(stream)?;
-        self.logger_sender.info("Bitfield sent");
+        self.logger_sender.info(&format!(
+            "IP: {}:{} Bitfield sent",
+            self.peer.ip, self.peer.port
+        ));
 
         Ok(())
     }
@@ -115,6 +127,8 @@ impl PeerSession {
         self.send_unchoked(stream)?;
 
         loop {
+            self.update_bitfield(stream)?;
+
             // TODO: Handle max connections.
             self.read_message_from_stream(stream)?;
         }
@@ -330,6 +344,25 @@ impl PeerSession {
         }
     }
 
+    fn update_bitfield(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
+        let updated_bitfield = self
+            .torrent_status
+            .get_bitfield()
+            .map_err(PeerSessionError::ErrorGettingBitfield)?;
+
+        let indices = updated_bitfield.diff(&self.status.bitfield);
+
+        for index in indices {
+            self.send_have(index, stream)?;
+        }
+
+        let bitfield_msg = Message::new(MessageId::Bitfield, self.status.bitfield.get_vec());
+        stream
+            .write_all(&bitfield_msg.as_bytes())
+            .map_err(|_| PeerSessionError::MessageError(MessageId::Bitfield))?;
+        Ok(())
+    }
+
     fn calculate_kilobits_per_second(&self, start_time: DateTime<Local>, size: u64) -> f64 {
         let elapsed_time = Local::now().signed_duration_since(start_time);
         let elapsed_time_in_seconds = elapsed_time.num_milliseconds() as f64 / 1000.0;
@@ -460,12 +493,12 @@ impl PeerSession {
     }
 
     fn send_bitfield(&mut self, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
-        let bitfield = self
+        self.status.bitfield = self
             .torrent_status
             .get_bitfield()
             .map_err(PeerSessionError::ErrorGettingBitfield)?;
 
-        let bitfield_msg = Message::new(MessageId::Bitfield, bitfield.bitfield);
+        let bitfield_msg = Message::new(MessageId::Bitfield, self.status.bitfield.get_vec());
         stream
             .write_all(&bitfield_msg.as_bytes())
             .map_err(|_| PeerSessionError::MessageError(MessageId::Bitfield))?;
@@ -496,6 +529,16 @@ impl PeerSession {
         Ok(())
     }
 
+    fn send_have(&mut self, index: usize, stream: &mut TcpStream) -> Result<(), PeerSessionError> {
+        let mut payload = vec![];
+        payload.extend(index.to_be_bytes());
+        let have_msg = Message::new(MessageId::Have, payload);
+        stream
+            .write_all(&have_msg.as_bytes())
+            .map_err(|_| PeerSessionError::MessageError(MessageId::Have))?;
+        Ok(())
+    }
+
     /// Handles a message received from the peer.
     fn handle_message(
         &mut self,
@@ -507,6 +550,7 @@ impl PeerSession {
             MessageId::Bitfield => self.handle_bitfield(message),
             MessageId::Piece => self.handle_piece(message),
             MessageId::Request => self.handle_request(message, stream)?,
+            MessageId::Have => self.handle_have(message),
             _ => {} // TODO: handle other messages,
         }
         Ok(())
@@ -530,7 +574,14 @@ impl PeerSession {
         self.piece.append(&mut block.to_vec());
     }
 
-    /// Handles a request message received from the peer.
+    fn handle_have(&mut self, message: Message) {
+        let mut index: [u8; 4] = [0; 4];
+        index.copy_from_slice(&message.payload[0..4]);
+        let index = u32::from_be_bytes(index);
+        self.bitfield.set_bit(index as u32, true);
+    }
+
+    /// Handles a piece message received from the peer.
     fn handle_request(
         &mut self,
         message: Message,
