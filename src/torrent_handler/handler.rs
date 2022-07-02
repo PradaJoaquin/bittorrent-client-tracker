@@ -104,6 +104,10 @@ impl TorrentHandler {
         Ok(())
     }
 
+    pub fn status(&self) -> Arc<AtomicTorrentStatus> {
+        self.torrent_status.clone()
+    }
+
     fn start_server(&mut self) -> Result<(), TorrentHandlerError> {
         let mut server = BtServer::new(
             self.torrent.clone(),

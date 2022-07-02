@@ -8,6 +8,7 @@ pub enum BtClientError {
     TorrentDirectoryError(ErrorMessage),
     LogError(LoggerError),
     ArgumentError(ErrorMessage),
+    UIBuildingError(ErrorMessage),
 }
 
 impl From<LoggerError> for BtClientError {

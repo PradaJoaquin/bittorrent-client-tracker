@@ -1,0 +1,431 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.38.2 -->
+<interface>
+  <requires lib="gtk+" version="3.24"/>
+  <object class="GtkTreeStore" id="files">
+    <columns>
+      <!-- column-name filename -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
+  <object class="GtkListStore" id="peers">
+    <columns>
+      <!-- column-name ip -->
+      <column type="gchararray"/>
+      <!-- column-name port -->
+      <column type="gint64"/>
+      <!-- column-name down -->
+      <column type="gchararray"/>
+      <!-- column-name up -->
+      <column type="gchararray"/>
+      <!-- column-name state -->
+      <column type="gchararray"/>
+    </columns>
+    <data>
+      <row>
+        <col id="0" translatable="yes">192.168.0.1</col>
+        <col id="1">5000</col>
+        <col id="2" translatable="yes">32MB/s</col>
+        <col id="3" translatable="yes">10MB/s</col>
+        <col id="4" translatable="yes">chocked</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">0.0.01.2</col>
+        <col id="1">32323</col>
+        <col id="2" translatable="yes">32MB/s</col>
+        <col id="3" translatable="yes">32MB/s</col>
+        <col id="4" translatable="yes">interested</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">10.01.1.1.</col>
+        <col id="1">9999</col>
+        <col id="2" translatable="yes">32MB/s</col>
+        <col id="3" translatable="yes">5Mb/s</col>
+        <col id="4" translatable="yes">chocked</col>
+      </row>
+    </data>
+  </object>
+  <object class="GtkListStore" id="torrents">
+    <columns>
+      <!-- column-name name -->
+      <column type="gchararray"/>
+      <!-- column-name progress -->
+      <column type="gfloat"/>
+      <!-- column-name infohash -->
+      <column type="gchararray"/>
+      <!-- column-name size -->
+      <column type="guint64"/>
+      <!-- column-name peers -->
+      <column type="guint64"/>
+      <!-- column-name total_pieces -->
+      <column type="guint64"/>
+      <!-- column-name downloaded_pieces -->
+      <column type="guint64"/>
+    </columns>
+    <data>
+      <row>
+        <col id="0" translatable="yes">probafndo</col>
+        <col id="1">30</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">ubuntu</col>
+        <col id="1">99</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">texto muy largo aaaaaaaaaaaaaa</col>
+        <col id="1">20</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes">.</col>
+        <col id="1">30</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes"/>
+        <col id="1">0</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes"/>
+        <col id="1">0</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes"/>
+        <col id="1">0</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes"/>
+        <col id="1">0</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes"/>
+        <col id="1">0</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+      <row>
+        <col id="0" translatable="yes"/>
+        <col id="1">0</col>
+        <col id="2" translatable="yes"/>
+        <col id="3">0</col>
+        <col id="4">0</col>
+        <col id="5">0</col>
+        <col id="6">0</col>
+      </row>
+    </data>
+  </object>
+  <object class="GtkWindow" id="window">
+    <property name="width-request">1100</property>
+    <property name="height-request">500</property>
+    <property name="can-focus">False</property>
+    <property name="window-position">center</property>
+    <child>
+      <object class="GtkPaned">
+        <property name="visible">True</property>
+        <property name="can-focus">True</property>
+        <property name="orientation">vertical</property>
+        <property name="position">300</property>
+        <child>
+          <object class="GtkScrolledWindow">
+            <property name="height-request">150</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="shadow-type">in</property>
+            <property name="propagate-natural-height">True</property>
+            <child>
+              <object class="GtkViewport">
+                <property name="name">dfdg</property>
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="margin-start">5</property>
+                <property name="margin-end">5</property>
+                <property name="margin-top">5</property>
+                <property name="margin-bottom">5</property>
+                <child>
+                  <object class="GtkTreeView">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="model">torrents</property>
+                    <property name="enable-grid-lines">both</property>
+                    <child internal-child="selection">
+                      <object class="GtkTreeSelection"/>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="resizable">True</property>
+                        <property name="sizing">fixed</property>
+                        <property name="fixed-width">300</property>
+                        <property name="min-width">40</property>
+                        <property name="title" translatable="yes">Name</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                          <attributes>
+                            <attribute name="text">0</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="resizable">True</property>
+                        <property name="sizing">fixed</property>
+                        <property name="fixed-width">200</property>
+                        <property name="min-width">40</property>
+                        <property name="title" translatable="yes">Progress</property>
+                        <child>
+                          <object class="GtkCellRendererProgress"/>
+                          <attributes>
+                            <attribute name="value">2</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="resizable">True</property>
+                        <property name="sizing">fixed</property>
+                        <property name="fixed-width">100</property>
+                        <property name="min-width">40</property>
+                        <property name="title" translatable="yes">Info Hash</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="resizable">True</property>
+                        <property name="sizing">fixed</property>
+                        <property name="fixed-width">70</property>
+                        <property name="min-width">40</property>
+                        <property name="title" translatable="yes">Size</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="resizable">True</property>
+                        <property name="sizing">fixed</property>
+                        <property name="min-width">40</property>
+                        <property name="title" translatable="yes">Peers</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="resizable">True</property>
+                        <property name="sizing">fixed</property>
+                        <property name="min-width">40</property>
+                        <property name="title" translatable="yes">Total pieces</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="resizable">True</property>
+                        <property name="sizing">fixed</property>
+                        <property name="min-width">40</property>
+                        <property name="title" translatable="yes">Downloaded pieces</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="resize">False</property>
+            <property name="shrink">False</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkNotebook">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="tab-pos">bottom</property>
+            <property name="show-border">False</property>
+            <child>
+              <object class="GtkViewport">
+                <property name="height-request">50</property>
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkTreeView">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="model">peers</property>
+                    <property name="enable-grid-lines">both</property>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="sizing">fixed</property>
+                        <property name="fixed-width">150</property>
+                        <property name="title" translatable="yes">IP</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                          <attributes>
+                            <attribute name="text">0</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="title" translatable="yes">Port</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                          <attributes>
+                            <attribute name="text">1</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="sizing">fixed</property>
+                        <property name="fixed-width">150</property>
+                        <property name="title" translatable="yes">Download</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                          <attributes>
+                            <attribute name="text">2</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="sizing">fixed</property>
+                        <property name="fixed-width">150</property>
+                        <property name="title" translatable="yes">Upload</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                          <attributes>
+                            <attribute name="text">3</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="title" translatable="yes">State</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                          <attributes>
+                            <attribute name="text">4</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="tab">
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Peers</property>
+              </object>
+              <packing>
+                <property name="tab-fill">False</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkViewport">
+                <property name="height-request">50</property>
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkTreeView">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="model">files</property>
+                    <child>
+                      <object class="GtkTreeViewColumn">
+                        <property name="title" translatable="yes">Name</property>
+                        <child>
+                          <object class="GtkCellRendererText"/>
+                          <attributes>
+                            <attribute name="text">0</attribute>
+                          </attributes>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child type="tab">
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Files</property>
+              </object>
+              <packing>
+                <property name="position">1</property>
+                <property name="tab-fill">False</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="resize">True</property>
+            <property name="shrink">False</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

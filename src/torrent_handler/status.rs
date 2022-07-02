@@ -29,7 +29,7 @@ use std::{
 /// so the thread can be blocked until the status notifies that a peer has disconnected.
 #[derive(Debug)]
 pub struct AtomicTorrentStatus {
-    torrent: Torrent,
+    pub torrent: Torrent, //TODO: resolver encqapsulamiento en statistics.rs
     pieces_status: Mutex<HashMap<u32, PieceStatus>>,
     current_peers: AtomicUsize,
     config: Cfg,

@@ -1,14 +1,15 @@
-use crate::bt_client::btclient_error::BtClientError;
-use crate::bt_client::error_message::ErrorMessage;
-use crate::config::cfg::Cfg;
-use crate::logger::logger_receiver::Logger;
-use crate::logger::logger_sender::LoggerSender;
-use crate::torrent_handler::handler::TorrentHandler;
-use crate::torrent_parser::parser::TorrentParser;
-use crate::torrent_parser::torrent::Torrent;
-use std::io;
+use crate::{
+    bt_client::btclient_error::BtClientError, bt_client::error_message::ErrorMessage,
+    config::cfg::Cfg, logger::logger_receiver::Logger, logger::logger_sender::LoggerSender,
+    torrent_handler::handler::TorrentHandler, torrent_parser::parser::TorrentParser,
+    torrent_parser::torrent::Torrent,
+};
+
+use super::{statistics::Runner, statistics::Statistics};
+
+use gtk::glib;
 use std::{
-    fs,
+    fs, io,
     thread::{self, JoinHandle},
 };
 
@@ -22,13 +23,15 @@ It holds the code for initializing the client, and for starting the torrent down
 ```rust
 # use bit_torrent_rustico::bt_client::btclient_error::BtClientError;
 # use std::fs::remove_dir_all;
+# use gtk::glib;
 use bit_torrent_rustico::bt_client::btclient::BtClient;
 
 # fn main() -> Result<(), BtClientError> {
 let torrents_directory = String::from("./logs");
 let bt_client = BtClient::init(torrents_directory)?;
+let (sender, _receiver) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
 
-let output = bt_client.run();
+let output = bt_client.run(sender);
 # remove_dir_all("./logs").unwrap();
 # Ok(())
 # }
@@ -68,36 +71,56 @@ impl BtClient {
     }
 
     /// Method for starting the torrent downloading process.
-    pub fn run(&self) {
+    pub fn run(&self, sender: glib::Sender<Vec<Statistics>>) {
         let logger = self.logger.new_sender();
         logger.info("Starting client...");
 
-        let mut torrent_handlers = Vec::new();
+        let mut handler_status_list = Vec::new();
+        let mut torrent_handlers_joins = Vec::new();
         self.torrents.iter().for_each(|torrent| {
-            let thread_handle = self.spawn_torrent_handler(torrent.clone());
+            let handler = TorrentHandler::new(torrent.clone(), self.config.clone(), logger.clone());
+            handler_status_list.push(handler.status());
+            let thread_handle = self.spawn_torrent_handler(torrent, handler);
             match thread_handle {
                 Ok(handle) => {
-                    torrent_handlers.push(handle);
+                    torrent_handlers_joins.push(handle);
                 }
                 Err(error) => {
                     let error_message = format!("An error occurred while trying to spawn a new thread for a torrent_handler: {:?}", error);
                     logger.error(&error_message);
+                    handler_status_list.pop();
                 }
             }
         });
 
-        self.join_handles(torrent_handlers);
+        let runner = Runner::new(handler_status_list, sender);
+        let _jh = self.spawn_statistics_runner(runner);
+
+        self.join_handles(torrent_handlers_joins);
     }
 
-    fn spawn_torrent_handler(&self, torrent: Torrent) -> Result<JoinHandle<()>, io::Error> {
-        let config = self.config.clone();
+    fn spawn_torrent_handler(
+        &self,
+        torrent: &Torrent,
+        mut torrent_handler: TorrentHandler,
+    ) -> Result<JoinHandle<()>, io::Error> {
         let logger = self.logger.new_sender();
 
         let builder = thread::Builder::new().name(format!("Torrent handler: {}", torrent.name()));
         builder.spawn(move || {
-            let mut handler = TorrentHandler::new(torrent, config, logger.clone());
-            if let Err(torrent_error) = handler.handle() {
+            if let Err(torrent_error) = torrent_handler.handle() {
                 logger.error(&format!("{:?}", torrent_error));
+            }
+        })
+    }
+
+    fn spawn_statistics_runner(&self, runner: Runner) -> Result<JoinHandle<()>, io::Error> {
+        let logger = self.logger.new_sender();
+
+        let builder = thread::Builder::new().name("Torrent statistics".to_string());
+        builder.spawn(move || {
+            if let Err(runner_error) = runner.run() {
+                logger.error(&format!("{:?}", runner_error));
             }
         })
     }

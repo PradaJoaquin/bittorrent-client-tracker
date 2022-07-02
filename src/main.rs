@@ -1,26 +1,27 @@
-use bit_torrent_rustico::bt_client::btclient::BtClient;
 use bit_torrent_rustico::bt_client::btclient_error::BtClientError;
 use bit_torrent_rustico::bt_client::error_message::ErrorMessage;
-use core::time;
+use bit_torrent_rustico::ui::setup;
+use gtk::gio::ApplicationFlags;
+use gtk::prelude::*;
+use gtk::Application;
 use std::env;
-use std::thread::sleep;
 
 fn main() -> Result<(), BtClientError> {
-    let arguments: Vec<String> = env::args().collect();
-    if arguments.len() != 2 {
+    if env::args().count() != 2 {
         return Err(BtClientError::ArgumentError(ErrorMessage::new(
             "Incorrect number of arguments. Only a directory path containing one or more torrents should be passed".to_string(),
         )));
     };
-    let client = BtClient::init(arguments[1].clone());
 
-    // sleeps temporales hasta solucionar Issue: https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/issues/67
+    let app = Application::builder()
+        .application_id("ar.uba.fi.la-deymoneta.bittorrent")
+        .flags(ApplicationFlags::HANDLES_OPEN)
+        .build();
 
-    sleep(time::Duration::from_millis(200));
-    let client = client?;
+    app.connect_open(|app, _file, _some_str| {
+        let _b = setup::build_ui(app);
+    });
 
-    client.run();
-    sleep(time::Duration::from_millis(200));
-
+    app.run();
     Ok(())
 }
