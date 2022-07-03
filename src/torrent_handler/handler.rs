@@ -81,7 +81,7 @@ impl TorrentHandler {
                 let current_peers = self.torrent_status.all_current_peers();
 
                 // If we reached the maximum number of simultaneous peers, wait until the status tells us that one disconnected.
-                if current_peers >= self.config.max_seeders_per_torrent as usize {
+                if current_peers >= self.config.max_peers_per_torrent as usize {
                     // This while loop is done to prevent creating more peers than allowed when multiple peers are disconnected at the same time.
                     self.torrent_status_receiver
                         .recv()
@@ -109,7 +109,7 @@ impl TorrentHandler {
                 }
 
                 let current_peers = self.torrent_status.all_current_peers();
-                if current_peers < self.config.max_seeders_per_torrent as usize {
+                if current_peers < self.config.max_peers_per_torrent as usize {
                     self.connect_to_peer(peer)?;
                 }
             }

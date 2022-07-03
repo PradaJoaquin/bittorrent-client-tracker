@@ -75,7 +75,7 @@ impl AtomicTorrentStatus {
         let sessions_status: HashMap<BtPeer, SessionStatus> = HashMap::new();
 
         let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
-            sync_channel((config.max_seeders_per_torrent * 100) as usize);
+            sync_channel((config.max_peers_per_torrent * 100) as usize);
 
         let total_pieces = torrent.total_pieces();
 

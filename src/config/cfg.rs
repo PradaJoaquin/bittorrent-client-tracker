@@ -13,7 +13,7 @@ use super::constants;
 /// - `download_directory`: directory where the downloaded files will be stored,
 /// - `pipelining_size`: number of request sent to a peer before waiting for the response,
 /// - `read_write_seconds_timeout`: timeout in seconds for the read and write operations to a peer,
-/// - `max_seeders_per_torrent`: maximum number of simultaneous peers that we are downloading from,
+/// - `max_peers_per_torrent`: maximum number of simultaneous peers that a torrent can have,
 /// - `max_log_file_kb_size`: max file size in kilobytes the log can have,
 #[derive(Debug, Clone)]
 pub struct Cfg {
@@ -22,7 +22,7 @@ pub struct Cfg {
     pub download_directory: String,
     pub pipelining_size: u32,
     pub read_write_seconds_timeout: u64,
-    pub max_seeders_per_torrent: u32,
+    pub max_peers_per_torrent: u32,
     pub max_log_file_kb_size: u32,
 }
 
@@ -38,7 +38,7 @@ impl Cfg {
     /// - tcp_port setting is not a valid number in the config file.
     /// - pipelining_size setting is not a valid number in the config file.
     /// - read_write_timeout setting is not a valid number in the config file.
-    /// - max_seeders_per_torrent setting is not a valid number in the config file.
+    /// - max_peers_per_torrent  setting is not a valid number in the config file.
     /// - max_log_file_size setting is not a valid number in the config file.
     /// - Minimum number of correct settings were not reached.
     pub fn new(path: &str) -> io::Result<Self> {
@@ -48,7 +48,7 @@ impl Cfg {
             download_directory: String::from(""),
             pipelining_size: 0,
             read_write_seconds_timeout: 0,
-            max_seeders_per_torrent: 0,
+            max_peers_per_torrent: 0,
             max_log_file_kb_size: 0,
         };
 
@@ -100,9 +100,9 @@ impl Cfg {
                     self.parse_value(value, constants::READ_WRITE_SECONDS_TIMEOUT)?;
             }
 
-            constants::MAX_SEEDERS_PER_TORRENT => {
-                self.max_seeders_per_torrent =
-                    self.parse_value(value, constants::MAX_SEEDERS_PER_TORRENT)?;
+            constants::MAX_PEERS_PER_TORRENT => {
+                self.max_peers_per_torrent =
+                    self.parse_value(value, constants::MAX_PEERS_PER_TORRENT)?;
             }
 
             constants::MAX_LOG_FILE_KB_SIZE => {
@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn test_good_config() {
         let path = "./test_good_config.cfg";
-        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_SEEDERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_ok(path, 1000, "./log", "./download", 5, 120, 5, 100);
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_tcp_port_not_a_number() {
         let path = "./test_tcp_port_not_a_number.cfg";
-        let contents = b"TCP_PORT=abcd\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_SEEDERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
+        let contents = b"TCP_PORT=abcd\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -210,7 +210,7 @@ mod tests {
     #[test]
     fn test_read_write_timeout_not_a_number() {
         let path = "./test_read_write_timeout_not_a_number.cfg";
-        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=2segundos\nMAX_SEEDERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=2segundos\nMAX_PEERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn test_pipelining_not_a_number() {
         let path = "./test_pipelining_not_a_number.cfg";
-        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=muy_grande\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_SEEDERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=muy_grande\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_max_peers_not_a_number() {
         let path = "./test_max_peers_not_a_number.cfg";
-        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECODS_TIMEOUT=120\nMAX_SEEDERS_PER_TORRENT=un_millon\nMAX_LOG_FILE_KB_SIZE=100";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECODS_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=un_millon\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn test_max_log_file_size() {
         let path = "./test_max_log_file_size.cfg";
-        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_SEEDERS_PER_TORRENT=100\nMAX_LOG_FILE_KB_SIZE=abc";
+        let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=100\nMAX_LOG_FILE_KB_SIZE=abc";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn test_order_doesnt_matter() {
         let path = "./test_order_doesnt_matter.cfg";
-        let contents = b"LOG_DIRECTORY=./log2\nDOWNLOAD_DIRECTORY=./download2\nTCP_PORT=2500\nREAD_WRITE_SECONDS_TIMEOUT=10\nMAX_SEEDERS_PER_TORRENT=1\nPIPELINING_SIZE=10\nMAX_LOG_FILE_KB_SIZE=100";
+        let contents = b"LOG_DIRECTORY=./log2\nDOWNLOAD_DIRECTORY=./download2\nTCP_PORT=2500\nREAD_WRITE_SECONDS_TIMEOUT=10\nMAX_PEERS_PER_TORRENT=1\nPIPELINING_SIZE=10\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_ok(path, 2500, "./log2", "./download2", 10, 10, 1, 100);
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn test_bad_format() {
         let path = "./test_bad_format.cfg";
-        let contents = b"TCP_PORT=abcd=1234\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_SEEDERS_PER_TORRENT=5";
+        let contents = b"TCP_PORT=abcd=1234\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5";
         create_and_write_file(path, contents);
 
         create_and_assert_config_is_not_ok(path);
@@ -277,7 +277,7 @@ mod tests {
         download_directory: &str,
         pipelining_size: u32,
         read_write_timeout: u64,
-        max_seeders_per_torrent: u32,
+        max_peers_per_torrent: u32,
         max_log_file_size: u32,
     ) {
         let config = Cfg::new(path);
@@ -291,7 +291,7 @@ mod tests {
         assert_eq!(config.download_directory, download_directory);
         assert_eq!(config.pipelining_size, pipelining_size);
         assert_eq!(config.read_write_seconds_timeout, read_write_timeout);
-        assert_eq!(config.max_seeders_per_torrent, max_seeders_per_torrent);
+        assert_eq!(config.max_peers_per_torrent, max_peers_per_torrent);
         assert_eq!(config.max_log_file_kb_size, max_log_file_size);
 
         fs::remove_file(path).expect(&format!("Error removing file in path: {}", &path));
