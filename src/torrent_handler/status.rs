@@ -38,6 +38,9 @@ pub struct AtomicTorrentStatus {
     finished_pieces: AtomicUsize,
     downloading_pieces: AtomicUsize,
     free_pieces: AtomicUsize,
+    total_seeders_count: AtomicUsize,
+    total_leechers_count: AtomicUsize,
+    all_current_peers: AtomicUsize,
 }
 
 /// Possible states of a piece.
@@ -72,7 +75,7 @@ impl AtomicTorrentStatus {
         let sessions_status: HashMap<BtPeer, SessionStatus> = HashMap::new();
 
         let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
-            sync_channel((config.max_peers_per_torrent * 100) as usize);
+            sync_channel((config.max_seeders_per_torrent * 100) as usize);
 
         let total_pieces = torrent.total_pieces();
 
@@ -91,6 +94,9 @@ impl AtomicTorrentStatus {
                 finished_pieces: AtomicUsize::new(0),
                 downloading_pieces: AtomicUsize::new(0),
                 free_pieces: AtomicUsize::new(total_pieces as usize),
+                total_seeders_count: AtomicUsize::new(0),
+                total_leechers_count: AtomicUsize::new(0),
+                all_current_peers: AtomicUsize::new(0),
             },
             torrent_status_receiver,
         )
@@ -123,9 +129,13 @@ impl AtomicTorrentStatus {
     pub fn peer_connected(&self, peer: &BtPeer) -> Result<(), AtomicTorrentStatusError> {
         self.current_peers.fetch_add(1, Ordering::Relaxed);
         let mut peer_status = self.lock_session_status()?;
-        let peer_name = format!("{}:{}", peer.ip, peer.port);
         peer_status.insert(peer.clone(), SessionStatus::new(Bitfield::new(vec![])));
         Ok(())
+    }
+
+    /// Adds a new peer to the current number of peers.
+    pub fn peer_connecting(&self) {
+        self.all_current_peers.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Removes a peer from the current number of peers.
@@ -139,22 +149,38 @@ impl AtomicTorrentStatus {
             return Err(AtomicTorrentStatusError::NoPeersConnected);
         }
         self.current_peers.fetch_sub(1, Ordering::Relaxed);
+        self.all_current_peers.fetch_sub(1, Ordering::Relaxed);
 
-        let peer_name = format!("{}:{}", peer.ip, peer.port);
         peer_status.remove(peer);
 
+        self.notify_peer_disconnected();
+        Ok(())
+    }
+
+    /// Removes a peer from the current number of connecting peers.
+    pub fn peer_connecting_failed(&self) {
+        self.all_current_peers.fetch_sub(1, Ordering::Relaxed);
+        self.notify_peer_disconnected();
+    }
+
+    /// Notifies the torrent status receiver that a peer has disconnected.
+    fn notify_peer_disconnected(&self) {
         // If the value couldn't be sent, it means the channel was closed.
         if self
             .torrent_status_sender
-            .send(self.current_peers.load(Ordering::Relaxed))
+            .send(self.all_current_peers.load(Ordering::Relaxed))
             .is_ok()
         {}
-        Ok(())
     }
 
     /// Returns the current number of peers.
     pub fn current_peers(&self) -> usize {
         self.current_peers.load(Ordering::Relaxed)
+    }
+
+    /// Returns the number of peers connected and connecting to the torrent.
+    pub fn all_current_peers(&self) -> usize {
+        self.all_current_peers.load(Ordering::Relaxed)
     }
 
     /// Updates the peer session status of a peer.
@@ -172,11 +198,28 @@ impl AtomicTorrentStatus {
         Ok(())
     }
 
-    /// Returns the sessions status of all peers connected to the torrent.
+    /// Updates the count of seeders and leechers.
+    pub fn update_total_peers(&self, seeders_count: usize, leechers_count: usize) {
+        self.total_seeders_count
+            .store(seeders_count, Ordering::Relaxed);
+        self.total_leechers_count
+            .store(leechers_count, Ordering::Relaxed);
+    }
+
+    /// Returns a tuple containing the number of seeders and leechers.
+    ///
+    /// The sum of the two values is the total number of peers.
+    pub fn get_total_peers(&self) -> (usize, usize) {
+        let seeders = self.total_seeders_count.load(Ordering::Relaxed);
+        let leechers = self.total_leechers_count.load(Ordering::Relaxed);
+        (seeders, leechers)
+    }
+
+    /// Returns the connected peers.
     ///
     /// # Errors
     /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
-    pub fn get_sessions_status(
+    pub fn get_connected_peers(
         &self,
     ) -> Result<HashMap<BtPeer, SessionStatus>, AtomicTorrentStatusError> {
         Ok(self.lock_session_status()?.clone())

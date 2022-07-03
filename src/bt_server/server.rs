@@ -28,7 +28,7 @@ pub enum BtServerError {
     HandleConnectionError(std::io::Error),
     PeerSessionError(PeerSessionError),
     BtPeerError(BtPeerError),
-    TorrentNotFound,
+    TorrentNotFound(Vec<u8>),
     ErrorSettingStreamTimeout,
 }
 
@@ -103,7 +103,7 @@ impl BtServer {
                 }
             }) {
                 Some((torrent, torrent_status)) => (torrent, torrent_status),
-                None => return Err(BtServerError::TorrentNotFound),
+                None => return Err(BtServerError::TorrentNotFound(info_hash)),
             };
 
         let mut peer_session = PeerSession::new(
@@ -117,7 +117,7 @@ impl BtServer {
 
         match peer_session.handshake_incoming_leecher(&mut stream) {
             Ok(_) => {
-                self.unchoke_peer(peer_session, peer, stream, torrent.clone());
+                self.unchoke_peer(peer_session, peer, stream, torrent.clone(), torrent_status)?;
             }
             Err(err) => {
                 self.logger_sender.warn(&format!("{:?}", err));
@@ -153,7 +153,11 @@ impl BtServer {
         peer: BtPeer,
         mut stream: TcpStream,
         torrent: Torrent,
-    ) {
+        torrent_status: &Arc<AtomicTorrentStatus>,
+    ) -> Result<(), BtServerError> {
+        torrent_status
+            .peer_connected(&peer)
+            .map_err(BtServerError::TorrentStatusError)?;
         let peer_name = format!("{}:{}", peer.ip, peer.port);
 
         let builder = thread::Builder::new().name(format!(
@@ -173,7 +177,13 @@ impl BtServer {
             );
         match join {
             Ok(_) => (),
-            Err(err) => self.logger_sender.error(&format!("{:?}", err)),
+            Err(err) => {
+                self.logger_sender.error(&format!("{:?}", err));
+                torrent_status
+                    .peer_disconnected(&peer)
+                    .map_err(BtServerError::TorrentStatusError)?;
+            }
         }
+        Ok(())
     }
 }

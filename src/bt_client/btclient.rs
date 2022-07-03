@@ -82,7 +82,7 @@ impl BtClient {
                     let error_message = format!("An error occurred while trying to spawn a new thread for a torrent_handler: {:?}", error);
                     logger.error(&error_message);
                     handler_status_list.pop();
-                    torrents_with_status.remove(&torrent);
+                    torrents_with_status.remove(torrent);
                 }
             }
         });

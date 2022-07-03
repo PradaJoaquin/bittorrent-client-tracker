@@ -14,6 +14,7 @@ use crate::{
     logger::logger_sender::LoggerSender,
     torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError},
     torrent_parser::torrent::Torrent,
+    tracker::http::constants::PEER_ID,
 };
 
 use super::{
@@ -34,6 +35,7 @@ pub enum PeerSessionError {
     ErrorAbortingPiece(AtomicTorrentStatusError),
     ErrorSelectingPiece(AtomicTorrentStatusError),
     ErrorNotifyingPieceDownloaded(AtomicTorrentStatusError),
+    ErrorConnectingToPeer(AtomicTorrentStatusError),
     PieceHashDoesNotMatch,
     NoPiecesLeftToDownloadInThisPeer,
     ErrorGettingBitfield(AtomicTorrentStatusError),
@@ -45,6 +47,7 @@ pub enum PeerSessionError {
     MessageLengthTooLong,
     ErrorSettingStreamTimeout,
     BtPeerError(BtPeerError),
+    PeerIsOurself,
 }
 
 /// A PeerSession represents a connection to a peer.
@@ -129,8 +132,23 @@ impl PeerSession {
         Ok(())
     }
 
-    /// Sends an unchoke message to the peer to start sending pieces.
     pub fn unchoke_incoming_leecher(
+        &mut self,
+        stream: &mut TcpStream,
+    ) -> Result<(), PeerSessionError> {
+        match self.unchoke_incoming_leecher_wrap(stream) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.torrent_status
+                    .peer_disconnected(&self.peer)
+                    .map_err(PeerSessionError::ErrorDisconnectingFromPeer)?;
+                Err(e)
+            }
+        }
+    }
+
+    /// Sends an unchoke message to the peer to start sending pieces.
+    pub fn unchoke_incoming_leecher_wrap(
         &mut self,
         stream: &mut TcpStream,
     ) -> Result<(), PeerSessionError> {
@@ -172,7 +190,19 @@ impl PeerSession {
     /// - The connection could not be established
     /// - The handshake was not successful
     pub fn start_outgoing_seeder(&mut self) -> Result<(), PeerSessionError> {
-        match self.start_outgoing_seeder_wrap() {
+        let mut stream = match self.set_up_peer_session() {
+            Ok(stream) => stream,
+            Err(e) => {
+                self.torrent_status.peer_connecting_failed();
+                return Err(e);
+            }
+        };
+
+        self.torrent_status
+            .peer_connected(&self.peer)
+            .map_err(PeerSessionError::ErrorConnectingToPeer)?;
+
+        match self.start_outgoing_seeder_wrap(&mut stream) {
             Ok(_) => Ok(()),
             Err(e) => {
                 self.torrent_status
@@ -183,13 +213,12 @@ impl PeerSession {
         }
     }
 
-    fn start_outgoing_seeder_wrap(&mut self) -> Result<(), PeerSessionError> {
+    fn set_up_peer_session(&mut self) -> Result<TcpStream, PeerSessionError> {
         let peer_socket = format!("{}:{}", self.peer.ip, self.peer.port);
 
         let mut stream = TcpStream::connect(&peer_socket)
             .map_err(|_| PeerSessionError::CouldNotConnectToPeer)?;
 
-        // set timeouts
         self.set_stream_timeouts(&mut stream)?;
 
         self.message_handler
@@ -202,19 +231,35 @@ impl PeerSession {
 
         self.logger_sender.info("Handshake successful");
 
+        // Avoid connecting to ourself.
+        match &self.peer.peer_id {
+            Some(id) => {
+                if id == PEER_ID.to_string().as_bytes() {
+                    return Err(PeerSessionError::PeerIsOurself);
+                }
+            }
+            None => (),
+        }
+        Ok(stream)
+    }
+
+    fn start_outgoing_seeder_wrap(
+        &mut self,
+        stream: &mut TcpStream,
+    ) -> Result<(), PeerSessionError> {
         loop {
-            self.read_message_from_stream(&mut stream)?;
+            self.read_message_from_stream(stream)?;
 
             if self.status.choked && !self.status.interested {
                 self.message_handler
-                    .send_interested(&mut stream)
+                    .send_interested(stream)
                     .map_err(PeerSessionError::MessageHandlerError)?;
 
                 self.status.interested = true;
             }
 
             if !self.status.choked && self.status.interested {
-                self.request_pieces(&mut stream)?;
+                self.request_pieces(stream)?;
             }
         }
     }
