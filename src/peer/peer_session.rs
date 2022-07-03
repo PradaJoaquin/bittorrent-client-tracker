@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::{
-    bt_peer::BtPeer,
+    bt_peer::{BtPeer, BtPeerError},
     message_handler::{MessageHandler, MessageHandlerError},
     peer_message::{Bitfield, Message, MessageError, MessageId},
     session_status::SessionStatus,
@@ -44,6 +44,7 @@ pub enum PeerSessionError {
     MessageError(MessageId),
     MessageLengthTooLong,
     ErrorSettingStreamTimeout,
+    BtPeerError(BtPeerError),
 }
 
 /// A PeerSession represents a connection to a peer.
@@ -83,10 +84,12 @@ impl PeerSession {
             logger_sender.clone(),
         );
 
+        let pieces_count = torrent.total_pieces();
+
         Ok(PeerSession {
             torrent,
             peer,
-            bitfield: Bitfield::new(vec![]),
+            bitfield: Bitfield::new(vec![0; (pieces_count / 8) as usize]),
             status: SessionStatus::new(our_bitfield),
             piece: vec![],
             torrent_status,
@@ -97,20 +100,14 @@ impl PeerSession {
         })
     }
 
-    /// ------------------------------------------------------------------------------------------------
-    /// Uploading
+    // ------------------------------------------------------------------------------------------------
+    // Uploading
 
     /// Handshakes with an incoming leecher.
     pub fn handshake_incoming_leecher(
         &mut self,
         stream: &mut TcpStream,
     ) -> Result<(), PeerSessionError> {
-        self.set_stream_timeouts(stream)?;
-
-        self.message_handler
-            .receive_handshake(stream)
-            .map_err(PeerSessionError::MessageHandlerError)?;
-
         self.message_handler
             .send_handshake(stream)
             .map_err(PeerSessionError::MessageHandlerError)?;
@@ -192,9 +189,9 @@ impl PeerSession {
             .send_handshake(&mut stream)
             .map_err(PeerSessionError::MessageHandlerError)?;
 
-        self.message_handler
+        self.peer
             .receive_handshake(&mut stream)
-            .map_err(PeerSessionError::MessageHandlerError)?;
+            .map_err(PeerSessionError::BtPeerError)?;
 
         self.logger_sender.info("Handshake successful");
 
@@ -403,9 +400,11 @@ impl PeerSession {
 
         for index in indices {
             self.message_handler
-                .send_have(index, stream)
+                .send_have(index as u32, stream)
                 .map_err(PeerSessionError::MessageHandlerError)?;
         }
+
+        self.status.bitfield = updated_bitfield;
 
         let bitfield_msg = Message::new(MessageId::Bitfield, self.status.bitfield.get_vec());
         stream

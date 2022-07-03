@@ -1,8 +1,4 @@
-use std::{
-    io::{Read, Write},
-    net::TcpStream,
-    sync::Arc,
-};
+use std::{io::Write, net::TcpStream, sync::Arc};
 
 use crate::{
     logger::logger_sender::LoggerSender,
@@ -78,7 +74,7 @@ impl MessageHandler {
         block: &[u8],
         stream: &mut TcpStream,
     ) -> Result<(), MessageHandlerError> {
-        let mut payload = vec![0; block.len() + 9];
+        let mut payload = vec![];
         payload.extend(index.to_be_bytes());
         payload.extend(begin.to_be_bytes());
         payload.extend(block);
@@ -106,7 +102,7 @@ impl MessageHandler {
             .get_bitfield()
             .map_err(MessageHandlerError::ErrorGettingBitfield)?;
 
-        let bitfield_msg = Message::new(MessageId::Bitfield, bitfield.bitfield);
+        let bitfield_msg = Message::new(MessageId::Bitfield, bitfield.get_vec());
         self.send(stream, bitfield_msg)?;
         Ok(())
     }
@@ -156,7 +152,7 @@ impl MessageHandler {
 
     pub fn send_have(
         &mut self,
-        index: usize,
+        index: u32,
         stream: &mut TcpStream,
     ) -> Result<(), MessageHandlerError> {
         let mut payload = vec![];
@@ -179,23 +175,6 @@ impl MessageHandler {
     /// ------------------------------------------------------------------------------------------------
     /// Handshake
 
-    /// Reads a handshake from the peer and validates it.
-    pub fn receive_handshake(
-        &mut self,
-        stream: &mut TcpStream,
-    ) -> Result<Handshake, MessageHandlerError> {
-        let mut buffer = [0; 68];
-        stream
-            .read_exact(&mut buffer)
-            .map_err(|_| MessageHandlerError::HandshakeError)?;
-
-        let handshake =
-            Handshake::from_bytes(&buffer).map_err(|_| MessageHandlerError::HandshakeError)?;
-
-        self.validate_handshake(&handshake)?;
-        Ok(handshake)
-    }
-
     /// Sends a handshake to the peer.
     ///
     /// It returns an error if the handshake could not be sent or the handshake was not successful.
@@ -209,19 +188,6 @@ impl MessageHandler {
         stream
             .write_all(&handshake.as_bytes())
             .map_err(|_| MessageHandlerError::HandshakeError)?;
-        Ok(())
-    }
-
-    /// Validates the handshake received from the peer.
-    fn validate_handshake(&self, handshake: &Handshake) -> Result<(), MessageHandlerError> {
-        let torrent_info_hash = self
-            .torrent
-            .get_info_hash_as_bytes()
-            .map_err(|_| MessageHandlerError::HandshakeError)?;
-
-        if handshake.info_hash != torrent_info_hash {
-            return Err(MessageHandlerError::HandshakeError);
-        }
         Ok(())
     }
 }

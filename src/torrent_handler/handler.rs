@@ -1,7 +1,4 @@
-use super::{
-    server::{BtServer, BtServerError},
-    status::{AtomicTorrentStatus, AtomicTorrentStatusError},
-};
+use super::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
 use crate::{
     config::cfg::Cfg,
     logger::logger_sender::LoggerSender,
@@ -39,7 +36,6 @@ pub enum TorrentHandlerError {
     TorrentStatusError(AtomicTorrentStatusError),
     PeerSessionError(PeerSessionError),
     TorrentStatusRecvError(mpsc::RecvError),
-    StartingServerError(BtServerError),
 }
 
 impl TorrentHandler {
@@ -67,8 +63,6 @@ impl TorrentHandler {
     /// - `TorrentStatusError` if there was a problem using the `Torrent Status`.
     /// - `TorrentStatusRecvError` if there was a problem receiving from the receiver of `Torrent Status`.
     pub fn handle(&mut self) -> Result<(), TorrentHandlerError> {
-        self.start_server()?;
-
         let tracker_handler =
             TrackerHandler::new(self.torrent.clone(), self.config.tcp_port.into())
                 .map_err(TorrentHandlerError::TrackerError)?;
@@ -104,32 +98,9 @@ impl TorrentHandler {
         Ok(())
     }
 
+    /// Gets the status of the torrent.
     pub fn status(&self) -> Arc<AtomicTorrentStatus> {
         self.torrent_status.clone()
-    }
-
-    fn start_server(&mut self) -> Result<(), TorrentHandlerError> {
-        let mut server = BtServer::new(
-            self.torrent.clone(),
-            self.config.clone(),
-            self.torrent_status.clone(),
-            self.logger_sender.clone(),
-        );
-
-        let builder = thread::Builder::new().name(format!("Server: {}", self.torrent.info.name));
-        let server_logger_sender = self.logger_sender.clone();
-
-        let join = builder.spawn(move || match server.init() {
-            Ok(_) => (),
-            Err(err) => {
-                server_logger_sender.error(&format!("The server couldn't be started: {:?}", err));
-            }
-        });
-        match join {
-            Ok(_) => (),
-            Err(err) => self.logger_sender.error(&format!("{:?}", err)),
-        }
-        Ok(())
     }
 
     fn get_peers_list(

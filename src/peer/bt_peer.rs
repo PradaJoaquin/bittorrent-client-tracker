@@ -1,4 +1,10 @@
 use crate::encoder_decoder::bencode::Bencode;
+use crate::tracker::http::constants::PEER_ID;
+use std::io::Read;
+use std::io::Write;
+use std::net::TcpStream;
+
+use super::handshake::Handshake;
 
 /// `BtPeer` struct containing individual BtPeer information.
 ///
@@ -8,15 +14,17 @@ pub struct BtPeer {
     pub peer_id: Option<Vec<u8>>,
     pub ip: String,
     pub port: i64,
+    pub info_hash: Option<Vec<u8>>,
 }
 
 /// Posible `BtPeer` errors
 #[derive(Debug)]
-pub enum FromBtPeerError {
+pub enum BtPeerError {
     InvalidPeerId,
     InvalidIp,
     InvalidPort,
     NotADict,
+    HandshakeError,
 }
 
 impl BtPeer {
@@ -26,25 +34,26 @@ impl BtPeer {
             peer_id: None,
             ip,
             port,
+            info_hash: None,
         }
     }
 
     /// Builds a new `BtPeer` from a bencoded peer from the tracker response peer list.
     ///
     ///
-    /// It returns an `FromBtPeerError` if:
+    /// It returns an `BtPeerError` if:
     /// - The peer ID is invalid.
     /// - The peer IP is invalid.
     /// - The peer Port is invalid.
     /// - The bencoded peer is not a Dict.
-    pub fn from(bencode: Bencode) -> Result<BtPeer, FromBtPeerError> {
+    pub fn from(bencode: Bencode) -> Result<BtPeer, BtPeerError> {
         let mut peer_id: Vec<u8> = Vec::new();
         let mut ip: String = String::new();
         let mut port: i64 = 0;
 
         let d = match bencode {
             Bencode::BDict(d) => d,
-            _ => return Err(FromBtPeerError::NotADict),
+            _ => return Err(BtPeerError::NotADict),
         };
 
         for (k, v) in d.iter() {
@@ -61,39 +70,72 @@ impl BtPeer {
             peer_id: Some(peer_id),
             ip,
             port,
+            info_hash: None,
         })
     }
 
-    fn create_peer_id(bencode: &Bencode) -> Result<Vec<u8>, FromBtPeerError> {
+    fn create_peer_id(bencode: &Bencode) -> Result<Vec<u8>, BtPeerError> {
         let peer_id = match bencode {
             Bencode::BString(s) => s.clone(),
-            _ => return Err(FromBtPeerError::InvalidPeerId),
+            _ => return Err(BtPeerError::InvalidPeerId),
         };
 
         Ok(peer_id)
     }
 
-    fn create_ip(bencode: &Bencode) -> Result<String, FromBtPeerError> {
+    fn create_ip(bencode: &Bencode) -> Result<String, BtPeerError> {
         let ip = match bencode {
             Bencode::BString(s) => s,
-            _ => return Err(FromBtPeerError::InvalidIp),
+            _ => return Err(BtPeerError::InvalidIp),
         };
 
         let ip = match String::from_utf8(ip.to_vec()) {
             Ok(s) => s,
-            Err(_) => return Err(FromBtPeerError::InvalidIp),
+            Err(_) => return Err(BtPeerError::InvalidIp),
         };
 
         Ok(ip)
     }
 
-    fn create_port(bencode: &Bencode) -> Result<i64, FromBtPeerError> {
+    fn create_port(bencode: &Bencode) -> Result<i64, BtPeerError> {
         let port = match bencode {
             Bencode::BNumber(n) => *n,
-            _ => return Err(FromBtPeerError::InvalidPort),
+            _ => return Err(BtPeerError::InvalidPort),
         };
 
         Ok(port)
+    }
+
+    /// Reads a handshake from the peer and returns the info hash.
+    ///
+    /// It returns an error if the handshake could not be read or the handshake was not successful.
+    pub fn receive_handshake(&mut self, stream: &mut TcpStream) -> Result<Vec<u8>, BtPeerError> {
+        let mut buffer = [0; 68];
+        stream
+            .read_exact(&mut buffer)
+            .map_err(|_| BtPeerError::HandshakeError)?;
+
+        let handshake = Handshake::from_bytes(&buffer).map_err(|_| BtPeerError::HandshakeError)?;
+
+        self.info_hash = Some(handshake.info_hash.clone());
+        self.peer_id = Some(handshake.peer_id);
+
+        Ok(handshake.info_hash)
+    }
+
+    /// Sends a handshake to the peer.
+    ///
+    /// It returns an error if the handshake could not be sent or the handshake was not successful.
+    pub fn send_handshake(
+        &mut self,
+        stream: &mut TcpStream,
+        info_hash: Vec<u8>,
+    ) -> Result<(), BtPeerError> {
+        let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
+        stream
+            .write_all(&handshake.as_bytes())
+            .map_err(|_| BtPeerError::HandshakeError)?;
+        Ok(())
     }
 }
 

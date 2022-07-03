@@ -1,7 +1,12 @@
 use crate::{
-    bt_client::btclient_error::BtClientError, bt_client::error_message::ErrorMessage,
-    config::cfg::Cfg, logger::logger_receiver::Logger, logger::logger_sender::LoggerSender,
-    torrent_handler::handler::TorrentHandler, torrent_parser::parser::TorrentParser,
+    bt_client::btclient_error::BtClientError,
+    bt_client::error_message::ErrorMessage,
+    bt_server::server::BtServer,
+    config::cfg::Cfg,
+    logger::logger_receiver::Logger,
+    logger::logger_sender::LoggerSender,
+    torrent_handler::{handler::TorrentHandler, status::AtomicTorrentStatus},
+    torrent_parser::parser::TorrentParser,
     torrent_parser::torrent::Torrent,
 };
 
@@ -9,7 +14,9 @@ use super::{statistics::Runner, statistics::Statistics};
 
 use gtk::glib;
 use std::{
+    collections::HashMap,
     fs, io,
+    sync::Arc,
     thread::{self, JoinHandle},
 };
 
@@ -20,22 +27,6 @@ Represents the BitTorrent client application.
 
 It holds the code for initializing the client, and for starting the torrent downloading process.
 
-```rust
-# use bit_torrent_rustico::bt_client::btclient_error::BtClientError;
-# use std::fs::remove_dir_all;
-# use gtk::glib;
-use bit_torrent_rustico::bt_client::btclient::BtClient;
-
-# fn main() -> Result<(), BtClientError> {
-let torrents_directory = String::from("./logs");
-let bt_client = BtClient::init(torrents_directory)?;
-let (sender, _receiver) = glib::MainContext::channel(glib::PRIORITY_DEFAULT);
-
-let output = bt_client.run(sender);
-# remove_dir_all("./logs").unwrap();
-# Ok(())
-# }
-```
 */
 pub struct BtClient {
     config: Cfg,
@@ -75,11 +66,13 @@ impl BtClient {
         let logger = self.logger.new_sender();
         logger.info("Starting client...");
 
+        let mut torrents_with_status: HashMap<Torrent, Arc<AtomicTorrentStatus>> = HashMap::new();
         let mut handler_status_list = Vec::new();
         let mut torrent_handlers_joins = Vec::new();
         self.torrents.iter().for_each(|torrent| {
             let handler = TorrentHandler::new(torrent.clone(), self.config.clone(), logger.clone());
             handler_status_list.push(handler.status());
+            torrents_with_status.insert(torrent.clone(), handler.status());
             let thread_handle = self.spawn_torrent_handler(torrent, handler);
             match thread_handle {
                 Ok(handle) => {
@@ -89,6 +82,7 @@ impl BtClient {
                     let error_message = format!("An error occurred while trying to spawn a new thread for a torrent_handler: {:?}", error);
                     logger.error(&error_message);
                     handler_status_list.pop();
+                    torrents_with_status.remove(&torrent);
                 }
             }
         });
@@ -96,7 +90,31 @@ impl BtClient {
         let runner = Runner::new(handler_status_list, sender);
         let _jh = self.spawn_statistics_runner(runner);
 
+        self.start_server(torrents_with_status);
+
         self.join_handles(torrent_handlers_joins);
+    }
+
+    fn start_server(&self, torrents_with_status: HashMap<Torrent, Arc<AtomicTorrentStatus>>) {
+        let mut server = BtServer::new(
+            torrents_with_status,
+            self.config.clone(),
+            self.logger.new_sender(),
+        );
+
+        let builder = thread::Builder::new().name("Server".to_string());
+        let server_logger_sender = self.logger.new_sender();
+
+        let join = builder.spawn(move || match server.init() {
+            Ok(_) => (),
+            Err(err) => {
+                server_logger_sender.error(&format!("The server couldn't be started: {:?}", err));
+            }
+        });
+        match join {
+            Ok(_) => (),
+            Err(err) => self.logger.new_sender().error(&format!("{:?}", err)),
+        }
     }
 
     fn spawn_torrent_handler(

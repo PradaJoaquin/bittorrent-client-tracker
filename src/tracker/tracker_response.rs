@@ -1,5 +1,5 @@
 use crate::encoder_decoder::bencode::{Bencode, BencodeError};
-use crate::peer::bt_peer::{BtPeer, FromBtPeerError};
+use crate::peer::bt_peer::{BtPeer, BtPeerError};
 
 /// `TrackerResponse` struct containing a tracker response.
 ///
@@ -19,7 +19,7 @@ pub enum FromTrackerResponseError {
     InvalidInterval,
     InvalidComplete,
     InvalidIncomplete,
-    InvalidPeers(FromBtPeerError),
+    InvalidPeers(BtPeerError),
     NotADict,
     NotAList,
 }

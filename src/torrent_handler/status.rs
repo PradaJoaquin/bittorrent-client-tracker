@@ -72,7 +72,7 @@ impl AtomicTorrentStatus {
         let sessions_status: HashMap<String, SessionStatus> = HashMap::new();
 
         let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
-            sync_channel((config.max_peers_per_torrent * 10) as usize);
+            sync_channel((config.max_peers_per_torrent * 100) as usize);
 
         let total_pieces = torrent.total_pieces();
 
@@ -741,6 +741,7 @@ mod tests {
             peer_id: Some(vec![0x00]),
             ip: ip,
             port: 0,
+            info_hash: None,
         }
     }
 
