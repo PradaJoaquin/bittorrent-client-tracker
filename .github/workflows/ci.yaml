@@ -21,21 +21,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
+  test:
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v2
+      - name: Install GTK
+        run: sudo apt-get install -y libgtk-3-dev
       - name: Run format check
         run: cargo fmt --check
       - name: Run check
         run: cargo check --color always
       - name: Run clippy
         run: cargo clippy --color always -- -D warnings
-
-  test:
-    needs: [lint] # Run after lint has successfully passed
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
       - name: Run tests
         run: cargo test
