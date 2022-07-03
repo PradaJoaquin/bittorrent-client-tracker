@@ -706,6 +706,8 @@ mod tests {
         let peer = create_test_peer("192.0".to_string());
 
         let (status, receiver) = AtomicTorrentStatus::new(&torrent, Cfg::new(CONFIG_PATH).unwrap());
+        status.peer_connecting();
+        status.peer_connecting();
         status.peer_connected(&peer).unwrap();
         status.peer_connected(&peer).unwrap();
         status.peer_disconnected(&peer).unwrap();
