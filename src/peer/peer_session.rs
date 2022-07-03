@@ -138,15 +138,22 @@ impl PeerSession {
         while id != MessageId::Interested {
             // if we receive a `not interested` message, we close the connection.
             if id == MessageId::NotInterested {
+                self.status.peer_interested = false;
                 // peer disconnected
                 return Err(PeerSessionError::PeerNotInterested);
             }
             // wait for the peer to send an interested message
             id = self.read_message_from_stream(stream)?;
         }
+
+        // Peer is interested
+        self.status.peer_interested = true;
+
         self.message_handler
             .send_unchoked(stream)
             .map_err(PeerSessionError::MessageHandlerError)?;
+
+        self.status.peer_choked = false;
 
         loop {
             self.update_bitfield(stream)?;

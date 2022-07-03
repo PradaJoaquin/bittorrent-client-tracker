@@ -17,6 +17,21 @@ pub struct BtPeer {
     pub info_hash: Option<Vec<u8>>,
 }
 
+impl PartialEq for BtPeer {
+    fn eq(&self, other: &Self) -> bool {
+        self.ip == other.ip && self.port == other.port
+    }
+}
+
+impl Eq for BtPeer {}
+
+impl std::hash::Hash for BtPeer {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.ip.hash(state);
+        self.port.hash(state);
+    }
+}
+
 /// Posible `BtPeer` errors
 #[derive(Debug)]
 pub enum BtPeerError {

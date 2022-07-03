@@ -34,7 +34,7 @@ pub struct AtomicTorrentStatus {
     current_peers: AtomicUsize,
     config: Cfg,
     torrent_status_sender: SyncSender<usize>,
-    sessions_status: Mutex<HashMap<String, SessionStatus>>,
+    sessions_status: Mutex<HashMap<BtPeer, SessionStatus>>,
     finished_pieces: AtomicUsize,
     downloading_pieces: AtomicUsize,
     free_pieces: AtomicUsize,
@@ -69,7 +69,7 @@ impl AtomicTorrentStatus {
     /// The value sent on the channel is the current number of peers connected.
     pub fn new(torrent: &Torrent, config: Cfg) -> (Self, Receiver<usize>) {
         let mut pieces_status: HashMap<u32, PieceStatus> = HashMap::new();
-        let sessions_status: HashMap<String, SessionStatus> = HashMap::new();
+        let sessions_status: HashMap<BtPeer, SessionStatus> = HashMap::new();
 
         let (torrent_status_sender, torrent_status_receiver): (SyncSender<usize>, Receiver<usize>) =
             sync_channel((config.max_peers_per_torrent * 100) as usize);
@@ -124,7 +124,7 @@ impl AtomicTorrentStatus {
         self.current_peers.fetch_add(1, Ordering::Relaxed);
         let mut peer_status = self.lock_session_status()?;
         let peer_name = format!("{}:{}", peer.ip, peer.port);
-        peer_status.insert(peer_name, SessionStatus::new(Bitfield::new(vec![])));
+        peer_status.insert(peer.clone(), SessionStatus::new(Bitfield::new(vec![])));
         Ok(())
     }
 
@@ -141,7 +141,7 @@ impl AtomicTorrentStatus {
         self.current_peers.fetch_sub(1, Ordering::Relaxed);
 
         let peer_name = format!("{}:{}", peer.ip, peer.port);
-        peer_status.remove(&peer_name);
+        peer_status.remove(peer);
 
         // If the value couldn't be sent, it means the channel was closed.
         if self
@@ -167,8 +167,8 @@ impl AtomicTorrentStatus {
         status: &SessionStatus,
     ) -> Result<(), AtomicTorrentStatusError> {
         let mut peer_status = self.lock_session_status()?;
-        let peer_name = format!("{}:{}", peer.ip, peer.port);
-        peer_status.insert(peer_name, status.clone());
+        peer_status.remove(peer);
+        peer_status.insert(peer.clone(), status.clone());
         Ok(())
     }
 
@@ -178,7 +178,7 @@ impl AtomicTorrentStatus {
     /// - `PoisonedSessionsStatusLock` if the lock on the `session_status` field is poisoned.
     pub fn get_sessions_status(
         &self,
-    ) -> Result<HashMap<String, SessionStatus>, AtomicTorrentStatusError> {
+    ) -> Result<HashMap<BtPeer, SessionStatus>, AtomicTorrentStatusError> {
         Ok(self.lock_session_status()?.clone())
     }
 
@@ -361,7 +361,7 @@ impl AtomicTorrentStatus {
 
     fn lock_session_status(
         &self,
-    ) -> Result<MutexGuard<HashMap<String, SessionStatus>>, AtomicTorrentStatusError> {
+    ) -> Result<MutexGuard<HashMap<BtPeer, SessionStatus>>, AtomicTorrentStatusError> {
         self.sessions_status
             .lock()
             .map_err(|_| AtomicTorrentStatusError::PoisonedSessionsStatusLock)
