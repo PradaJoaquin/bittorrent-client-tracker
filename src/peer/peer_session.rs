@@ -139,6 +139,9 @@ impl PeerSession {
         &mut self,
         stream: &mut TcpStream,
     ) -> Result<(), PeerSessionError> {
+        self.torrent_status
+            .peer_connected(&self.peer)
+            .map_err(PeerSessionError::ErrorConnectingToPeer)?;
         match self.unchoke_incoming_leecher_wrap(stream) {
             Ok(_) => Ok(()),
             Err(e) => {
@@ -470,7 +473,10 @@ impl PeerSession {
 
     fn calculate_kilobits_per_second(&self, start_time: DateTime<Local>, size: u64) -> f64 {
         let elapsed_time = Local::now().signed_duration_since(start_time);
-        let elapsed_time_in_seconds = elapsed_time.num_milliseconds() as f64 / 1000.0;
+        let elapsed_time_in_seconds = match elapsed_time.num_microseconds() {
+            Some(x) => x as f64 / 1_000_000.0,
+            None => return 0.0,
+        };
         (size as f64 / elapsed_time_in_seconds) * 8.0 / 1024.0
     }
 

@@ -29,8 +29,9 @@ pub enum BtServerError {
     HandleConnectionError(std::io::Error),
     PeerSessionError(PeerSessionError),
     BtPeerError(BtPeerError),
-    TorrentNotFound(Vec<u8>),
+    TorrentNotFound(String),
     ErrorSettingStreamTimeout,
+    MaxPeersConnectedReached(String),
 }
 
 impl BtServer {
@@ -98,26 +99,18 @@ impl BtServer {
         })?;
 
         // See if the torrent is in the list of torrents.
-        let (torrent, torrent_status) =
-            match self.torrents_with_status.iter().find(|(torrent, _)| {
-                match torrent.get_info_hash_as_bytes() {
-                    Ok(info_hash_bytes) => info_hash_bytes == info_hash,
-                    Err(_) => false,
-                }
-            }) {
-                Some((torrent, torrent_status)) => (torrent, torrent_status),
-                None => return Err(BtServerError::TorrentNotFound(info_hash)),
-            };
+        let (torrent, torrent_status) = match self.find_torrent_and_status(info_hash) {
+            Ok(value) => value,
+            Err(value) => return value,
+        };
 
-        let mut peer_session = PeerSession::new(
-            peer.clone(),
-            torrent.clone(),
-            torrent_status.clone(),
-            self.config.clone(),
-            self.logger_sender.clone(),
-            self.client_peer_id.clone(),
-        )
-        .map_err(BtServerError::PeerSessionError)?;
+        let current_peers = torrent_status.all_current_peers();
+        // if we reached the max number of peers, we can't accept any more connections.
+        if current_peers >= self.config.max_peers_per_torrent as usize {
+            return Err(BtServerError::MaxPeersConnectedReached(torrent.name()));
+        }
+
+        let mut peer_session = self.create_peer_session(&peer, torrent, torrent_status)?;
 
         match peer_session.handshake_incoming_leecher(&mut stream) {
             Ok(_) => {
@@ -127,12 +120,46 @@ impl BtServer {
                 self.logger_sender.warn(&format!("{:?}", err));
             }
         }
-
-        // peer connected
-
-        // TODO: Handle max connections.
-
         Ok(())
+    }
+
+    fn find_torrent_and_status(
+        &self,
+        info_hash: Vec<u8>,
+    ) -> Result<(&Torrent, &Arc<AtomicTorrentStatus>), Result<(), BtServerError>> {
+        let (torrent, torrent_status) =
+            match self.torrents_with_status.iter().find(|(torrent, _)| {
+                match torrent.get_info_hash_as_bytes() {
+                    Ok(info_hash_bytes) => info_hash_bytes == info_hash,
+                    Err(_) => false,
+                }
+            }) {
+                Some((torrent, torrent_status)) => (torrent, torrent_status),
+                None => {
+                    return Err(Err(BtServerError::TorrentNotFound(
+                        String::from_utf8_lossy(&info_hash).to_string(),
+                    )))
+                }
+            };
+        Ok((torrent, torrent_status))
+    }
+
+    fn create_peer_session(
+        &self,
+        peer: &BtPeer,
+        torrent: &Torrent,
+        torrent_status: &Arc<AtomicTorrentStatus>,
+    ) -> Result<PeerSession, BtServerError> {
+        let peer_session = PeerSession::new(
+            peer.clone(),
+            torrent.clone(),
+            torrent_status.clone(),
+            self.config.clone(),
+            self.logger_sender.clone(),
+            self.client_peer_id.clone(),
+        )
+        .map_err(BtServerError::PeerSessionError)?;
+        Ok(peer_session)
     }
 
     /// Sets read and write timeouts for the stream.
@@ -159,9 +186,7 @@ impl BtServer {
         torrent: Torrent,
         torrent_status: &Arc<AtomicTorrentStatus>,
     ) -> Result<(), BtServerError> {
-        torrent_status
-            .peer_connected(&peer)
-            .map_err(BtServerError::TorrentStatusError)?;
+        torrent_status.peer_connecting();
         let peer_name = format!("{}:{}", peer.ip, peer.port);
 
         let builder = thread::Builder::new().name(format!(
@@ -183,9 +208,6 @@ impl BtServer {
             Ok(_) => (),
             Err(err) => {
                 self.logger_sender.error(&format!("{:?}", err));
-                torrent_status
-                    .peer_disconnected(&peer)
-                    .map_err(BtServerError::TorrentStatusError)?;
             }
         }
         Ok(())
