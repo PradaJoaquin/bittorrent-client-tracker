@@ -4,7 +4,6 @@ use crate::{
     logger::logger_sender::LoggerSender,
     torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError},
     torrent_parser::torrent::Torrent,
-    tracker::http::constants,
 };
 
 use super::{
@@ -27,6 +26,7 @@ pub struct MessageHandler {
     torrent: Torrent,
     torrent_status: Arc<AtomicTorrentStatus>,
     logger_sender: LoggerSender,
+    client_peer_id: String,
 }
 
 impl MessageHandler {
@@ -34,11 +34,13 @@ impl MessageHandler {
         torrent: Torrent,
         torrent_status: Arc<AtomicTorrentStatus>,
         logger_sender: LoggerSender,
+        client_peer_id: String,
     ) -> MessageHandler {
         Self {
             torrent,
             torrent_status,
             logger_sender,
+            client_peer_id,
         }
     }
 
@@ -184,7 +186,7 @@ impl MessageHandler {
             .get_info_hash_as_bytes()
             .map_err(|_| MessageHandlerError::HandshakeError)?;
 
-        let handshake = Handshake::new(info_hash, constants::PEER_ID.as_bytes().to_vec());
+        let handshake = Handshake::new(info_hash, self.client_peer_id.as_bytes().to_vec());
         stream
             .write_all(&handshake.as_bytes())
             .map_err(|_| MessageHandlerError::HandshakeError)?;

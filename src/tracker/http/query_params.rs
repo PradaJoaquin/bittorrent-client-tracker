@@ -1,4 +1,4 @@
-use super::{constants, url_encoder};
+use super::url_encoder;
 
 /// `QueryParams` struct containing the query parameters information.
 ///
@@ -10,15 +10,22 @@ pub struct QueryParams {
     info_hash: String,
     client_port: u32,
     info_length: i64,
+    client_peer_id: String,
 }
 
 impl QueryParams {
     /// Creates a new `QueryParams` from an **info_hash**, **client_port** and **info_lenght** passed by parameters.
-    pub fn new(info_hash: String, client_port: u32, info_length: i64) -> QueryParams {
+    pub fn new(
+        info_hash: String,
+        client_port: u32,
+        info_length: i64,
+        client_peer_id: String,
+    ) -> QueryParams {
         QueryParams {
             info_hash,
             client_port,
             info_length,
+            client_peer_id,
         }
     }
 
@@ -27,7 +34,7 @@ impl QueryParams {
         format!(
             "?info_hash={}&peer_id={}&port={}&uploaded=0&downloaded=0&left={}&event=started",
             url_encoder::encode(self.info_hash.as_str()),
-            constants::PEER_ID,
+            self.client_peer_id,
             self.client_port,
             self.info_length
         )
@@ -43,8 +50,9 @@ mod tests {
         let info_hash = "2c6b6858d61da9543d4231a71db4b1c9264b0685".to_string();
         let client_port = 6969;
         let length = 100;
-        let peer_id = constants::PEER_ID;
-        let query_params = QueryParams::new(info_hash.clone(), client_port, length);
+        let peer_id = "LA_DEYMONETA_PAPA!!!".to_string();
+        let query_params =
+            QueryParams::new(info_hash.clone(), client_port, length, peer_id.clone());
 
         assert_eq!(
             query_params.build(),

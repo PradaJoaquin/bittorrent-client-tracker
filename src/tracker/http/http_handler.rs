@@ -167,6 +167,7 @@ mod tests {
                 "2c6b6858d61da9543d4231a71db4b1c9264b0685".to_string(),
                 6969,
                 100,
+                "LA_DEYMONETA_PAPA!!!".to_string(),
             ),
         );
         let response = http_handler.https_request().unwrap();
@@ -183,6 +184,7 @@ mod tests {
                 "info_hash_test_info_hash_test_info_hash_test".to_string(),
                 6969,
                 100,
+                "LA_DEYMONETA_PAPA!!!".to_string(),
             ),
         );
         let response = http_handler.https_request().unwrap();
@@ -199,6 +201,7 @@ mod tests {
                 "f834824904be1854c89ba007c01678ff797f8dc7".to_string(),
                 6969,
                 100,
+                "LA_DEYMONETA_PAPA!!!".to_string(),
             ),
         );
         let response = http_handler.http_request().unwrap();
@@ -215,6 +218,7 @@ mod tests {
                 "info_hash_test_info_hash_test_info_hash_test".to_string(),
                 6969,
                 100,
+                "LA_DEYMONETA_PAPA!!!".to_string(),
             ),
         );
         let response = http_handler.http_request().unwrap();

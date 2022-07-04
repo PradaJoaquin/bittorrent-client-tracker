@@ -12,6 +12,7 @@ use crate::{
     torrent_parser::torrent::Torrent,
 };
 use gtk::glib;
+use rand::Rng;
 use std::{
     collections::HashMap,
     fs, io,
@@ -31,6 +32,7 @@ pub struct BtClient {
     config: Cfg,
     logger: Logger,
     torrents: Vec<Torrent>,
+    client_peer_id: String,
 }
 
 impl BtClient {
@@ -53,11 +55,26 @@ impl BtClient {
 
         let torrents = Self::parse_torrents_in_directory(logger_sender, torrents_directory)?;
 
+        let client_peer_id = Self::generate_peer_id();
+
         Ok(Self {
             config,
             logger,
             torrents,
+            client_peer_id,
         })
+    }
+
+    /// Generates a random peer ID.
+    fn generate_peer_id() -> String {
+        let mut peer_id = String::from("DTorrent:");
+
+        let mut rng = rand::thread_rng();
+        for _ in 0..11 {
+            let n: u32 = rng.gen_range(0..10);
+            peer_id.push_str(&n.to_string())
+        }
+        peer_id
     }
 
     /// Method for starting the torrent downloading process.
@@ -69,7 +86,7 @@ impl BtClient {
         let mut handler_status_list = Vec::new();
         let mut torrent_handlers_joins = Vec::new();
         self.torrents.iter().for_each(|torrent| {
-            let handler = TorrentHandler::new(torrent.clone(), self.config.clone(), logger.clone());
+            let handler = TorrentHandler::new(torrent.clone(), self.config.clone(), logger.clone(), self.client_peer_id.clone());
             handler_status_list.push(handler.status());
             torrents_with_status.insert(torrent.clone(), handler.status());
             let thread_handle = self.spawn_torrent_handler(torrent, handler);
@@ -99,6 +116,7 @@ impl BtClient {
             torrents_with_status,
             self.config.clone(),
             self.logger.new_sender(),
+            self.client_peer_id.clone(),
         );
 
         let builder = thread::Builder::new().name("Server".to_string());

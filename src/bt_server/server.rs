@@ -18,6 +18,7 @@ pub struct BtServer {
     config: Cfg,
     torrents_with_status: HashMap<Torrent, Arc<AtomicTorrentStatus>>,
     logger_sender: LoggerSender,
+    client_peer_id: String,
 }
 
 /// Posible BtServer errors.
@@ -38,11 +39,13 @@ impl BtServer {
         torrents_with_status: HashMap<Torrent, Arc<AtomicTorrentStatus>>,
         config: Cfg,
         logger_sender: LoggerSender,
+        client_peer_id: String,
     ) -> Self {
         Self {
             config,
             torrents_with_status,
             logger_sender,
+            client_peer_id,
         }
     }
 
@@ -112,6 +115,7 @@ impl BtServer {
             torrent_status.clone(),
             self.config.clone(),
             self.logger_sender.clone(),
+            self.client_peer_id.clone(),
         )
         .map_err(BtServerError::PeerSessionError)?;
 

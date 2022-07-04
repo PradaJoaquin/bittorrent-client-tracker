@@ -14,7 +14,6 @@ use crate::{
     logger::logger_sender::LoggerSender,
     torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError},
     torrent_parser::torrent::Torrent,
-    tracker::http::constants::PEER_ID,
 };
 
 use super::{
@@ -64,6 +63,7 @@ pub struct PeerSession {
     config: Cfg,
     logger_sender: LoggerSender,
     message_handler: MessageHandler,
+    client_peer_id: String,
 }
 
 impl PeerSession {
@@ -73,6 +73,7 @@ impl PeerSession {
         torrent_status: Arc<AtomicTorrentStatus>,
         config: Cfg,
         logger_sender: LoggerSender,
+        client_peer_id: String,
     ) -> Result<Self, PeerSessionError> {
         let our_bitfield = Bitfield::new(
             torrent_status
@@ -85,6 +86,7 @@ impl PeerSession {
             torrent.clone(),
             torrent_status.clone(),
             logger_sender.clone(),
+            client_peer_id.clone(),
         );
 
         let pieces_count = torrent.total_pieces();
@@ -100,6 +102,7 @@ impl PeerSession {
             config,
             logger_sender,
             message_handler,
+            client_peer_id,
         })
     }
 
@@ -234,7 +237,7 @@ impl PeerSession {
         // Avoid connecting to ourself.
         match &self.peer.peer_id {
             Some(id) => {
-                if id == PEER_ID.to_string().as_bytes() {
+                if id == self.client_peer_id.to_string().as_bytes() {
                     return Err(PeerSessionError::PeerIsOurself);
                 }
             }

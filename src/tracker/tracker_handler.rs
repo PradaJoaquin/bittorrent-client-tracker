@@ -15,6 +15,7 @@ pub struct TrackerHandler {
     pub torrent: Torrent,
     pub tracker_url: TrackerUrl,
     pub client_port: u32,
+    client_peer_id: String,
 }
 /// Posible `TrackerHandler` errors.
 #[derive(Debug)]
@@ -29,7 +30,11 @@ impl TrackerHandler {
     ///
     /// It returns an `TrackerHandlerError` if:
     /// - There was an error parsing the torrent's announce_url.
-    pub fn new(torrent: Torrent, client_port: u32) -> Result<Self, TrackerHandlerError> {
+    pub fn new(
+        torrent: Torrent,
+        client_port: u32,
+        client_peer_id: String,
+    ) -> Result<Self, TrackerHandlerError> {
         let tracker_url = match TrackerUrl::parse(torrent.announce_url.as_str()) {
             Ok(url) => url,
             Err(err) => return Err(TrackerHandlerError::UrlParseError(err)),
@@ -39,6 +44,7 @@ impl TrackerHandler {
             torrent,
             tracker_url,
             client_port,
+            client_peer_id,
         })
     }
 
@@ -55,6 +61,7 @@ impl TrackerHandler {
             self.torrent.info_hash.clone(),
             self.client_port,
             self.torrent.info.length,
+            self.client_peer_id.clone(),
         );
 
         let http_handler = HttpHandler::new(self.tracker_url.clone(), query_params);
@@ -90,8 +97,9 @@ mod tests {
             "2c6b6858d61da9543d4231a71db4b1c9264b0685",
         );
         let test_port = 6969;
+        let test_peer_id = "LA_DEYMONETA_PAPA!!!".to_string();
 
-        let tracker_handler = TrackerHandler::new(torrent, test_port).unwrap();
+        let tracker_handler = TrackerHandler::new(torrent, test_port, test_peer_id).unwrap();
 
         assert!(!tracker_handler.get_peers_list().unwrap().peers.is_empty());
     }
@@ -103,8 +111,9 @@ mod tests {
             "f834824904be1854c89ba007c01678ff797f8dc7",
         );
         let test_port = 6969;
+        let test_peer_id = "LA_DEYMONETA_PAPA!!!".to_string();
 
-        let tracker_handler = TrackerHandler::new(torrent, test_port).unwrap();
+        let tracker_handler = TrackerHandler::new(torrent, test_port, test_peer_id).unwrap();
 
         assert!(!tracker_handler.get_peers_list().unwrap().peers.is_empty());
     }

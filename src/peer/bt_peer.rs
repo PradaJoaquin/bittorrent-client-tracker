@@ -1,5 +1,4 @@
 use crate::encoder_decoder::bencode::Bencode;
-use crate::tracker::http::constants::PEER_ID;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;
@@ -145,8 +144,9 @@ impl BtPeer {
         &mut self,
         stream: &mut TcpStream,
         info_hash: Vec<u8>,
+        client_peer_id: String,
     ) -> Result<(), BtPeerError> {
-        let handshake = Handshake::new(info_hash, PEER_ID.as_bytes().to_vec());
+        let handshake = Handshake::new(info_hash, client_peer_id.as_bytes().to_vec());
         stream
             .write_all(&handshake.as_bytes())
             .map_err(|_| BtPeerError::HandshakeError)?;

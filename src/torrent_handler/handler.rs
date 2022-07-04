@@ -31,6 +31,7 @@ pub struct TorrentHandler {
     logger_sender: LoggerSender,
     torrent_status: Arc<AtomicTorrentStatus>,
     torrent_status_receiver: Receiver<usize>,
+    client_peer_id: String,
 }
 
 /// Posible torrent handler errors.
@@ -44,7 +45,12 @@ pub enum TorrentHandlerError {
 
 impl TorrentHandler {
     /// Creates a new `TorrentHandler` from a torrent, a config and a logger sender.
-    pub fn new(torrent: Torrent, config: Cfg, logger_sender: LoggerSender) -> Self {
+    pub fn new(
+        torrent: Torrent,
+        config: Cfg,
+        logger_sender: LoggerSender,
+        client_peer_id: String,
+    ) -> Self {
         let (torrent_status, torrent_status_receiver) =
             AtomicTorrentStatus::new(&torrent, config.clone());
 
@@ -54,6 +60,7 @@ impl TorrentHandler {
             config,
             logger_sender,
             torrent_status_receiver,
+            client_peer_id,
         }
     }
 
@@ -67,9 +74,12 @@ impl TorrentHandler {
     /// - `TorrentStatusError` if there was a problem using the `Torrent Status`.
     /// - `TorrentStatusRecvError` if there was a problem receiving from the receiver of `Torrent Status`.
     pub fn handle(&mut self) -> Result<(), TorrentHandlerError> {
-        let tracker_handler =
-            TrackerHandler::new(self.torrent.clone(), self.config.tcp_port.into())
-                .map_err(TorrentHandlerError::TrackerError)?;
+        let tracker_handler = TrackerHandler::new(
+            self.torrent.clone(),
+            self.config.tcp_port.into(),
+            self.client_peer_id.clone(),
+        )
+        .map_err(TorrentHandlerError::TrackerError)?;
         self.logger_sender.info("Connected to tracker.");
 
         while !self.torrent_status.is_finished() {
@@ -161,6 +171,7 @@ impl TorrentHandler {
             self.torrent_status.clone(),
             self.config.clone(),
             self.logger_sender.clone(),
+            self.client_peer_id.clone(),
         )
         .map_err(TorrentHandlerError::PeerSessionError)?;
 
