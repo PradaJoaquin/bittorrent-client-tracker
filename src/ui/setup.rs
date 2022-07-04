@@ -7,7 +7,7 @@ use std::thread;
 
 pub enum UserInterfaceError {
     WidgetBuildingError,
-    ClientError(BtClientError), //TODO: cambiar nombre
+    ClientError(BtClientError),
     WindowDataError,
     WindowBuildingError,
 }

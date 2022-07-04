@@ -28,10 +28,10 @@ impl ClientWindowData {
             .ok_or(UserInterfaceError::WindowDataError)?;
 
         // Sort by torrent name
-        torrents_liststore.set_sort_column_id(gtk::SortColumn::Index(0), gtk::SortType::Ascending);
+        //torrents_liststore.set_sort_column_id(gtk::SortColumn::Index(0), gtk::SortType::Ascending);
 
         // Sort by peer download speed
-        peers_liststore.set_sort_column_id(gtk::SortColumn::Index(7), gtk::SortType::Descending);
+        //peers_liststore.set_sort_column_id(gtk::SortColumn::Index(7), gtk::SortType::Descending);
 
         Ok(Self {
             last_torrents_statistics: Mutex::new(Vec::new()),
@@ -91,7 +91,7 @@ impl ClientWindowData {
                         FormatSizeFlags::IEC_UNITS,
                     )),
                 ),
-                (4u32, &(torrent_stats.peers_amount as u32)), // TODO: should be connected peers!
+                (4u32, &(torrent_stats.peers_amount as u32)),
                 (5u32, &torrent_stats.pieces_amount),
                 (6u32, &(torrent_stats.downloaded_pieces_amount as u32)),
                 (7u32, &(torrent_stats.total_peers as u32)),
