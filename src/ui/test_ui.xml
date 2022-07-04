@@ -24,6 +24,10 @@
       <column type="gchararray"/>
       <!-- column-name peer_id -->
       <column type="gchararray"/>
+      <!-- column-name down_speed_hidden (needed for sorting) -->
+      <column type="gint64"/>
+      <!-- column-name up_speed_hidden (needed for sorting) -->
+      <column type="gint64"/>
     </columns>
   </object>
   <object class="GtkListStore" id="torrents">
@@ -82,6 +86,7 @@
                     <property name="enable-grid-lines">both</property>
                     <child>
                       <object class="GtkTreeViewColumn">
+                        <property name="sort-column-id">0</property>
                         <property name="resizable">True</property>
                         <property name="sizing">fixed</property>
                         <property name="fixed-width">250</property>
@@ -281,6 +286,7 @@
                         <property name="enable-grid-lines">both</property>
                         <child>
                           <object class="GtkTreeViewColumn">
+                            <property name="sort-column-id">0</property>
                             <property name="resizable">True</property>
                             <property name="sizing">fixed</property>
                             <property name="fixed-width">150</property>
@@ -296,6 +302,7 @@
                         </child>
                         <child>
                           <object class="GtkTreeViewColumn">
+                            <property name="sort-column-id">1</property>
                             <property name="resizable">True</property>
                             <property name="sizing">fixed</property>
                             <property name="fixed-width">100</property>
@@ -311,6 +318,7 @@
                         </child>
                         <child>
                           <object class="GtkTreeViewColumn">
+                            <property name="sort-column-id">7</property>
                             <property name="resizable">True</property>
                             <property name="sizing">fixed</property>
                             <property name="fixed-width">100</property>
@@ -326,6 +334,7 @@
                         </child>
                         <child>
                           <object class="GtkTreeViewColumn">
+                            <property name="sort-column-id">8</property>
                             <property name="resizable">True</property>
                             <property name="sizing">fixed</property>
                             <property name="fixed-width">100</property>
@@ -341,6 +350,7 @@
                         </child>
                         <child>
                           <object class="GtkTreeViewColumn">
+                            <property name="sort-column-id">6</property>
                             <property name="resizable">True</property>
                             <property name="sizing">fixed</property>
                             <property name="fixed-width">200</property>

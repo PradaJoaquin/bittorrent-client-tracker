@@ -27,6 +27,12 @@ impl ClientWindowData {
             .object("peers")
             .ok_or(UserInterfaceError::WindowDataError)?;
 
+        // Sort by torrent name
+        torrents_liststore.set_sort_column_id(gtk::SortColumn::Index(0), gtk::SortType::Ascending);
+
+        // Sort by peer download speed
+        peers_liststore.set_sort_column_id(gtk::SortColumn::Index(7), gtk::SortType::Descending);
+
         Ok(Self {
             last_torrents_statistics: Mutex::new(Vec::new()),
             torrents_liststore,
@@ -120,6 +126,8 @@ impl ClientWindowData {
                     &self.format_state(peer_stats.client_choked, peer_stats.client_interested),
                 ),
                 (6u32, &peer_stats.peer_id),
+                (7u32, &peer_stats.download_speed), // For sorting
+                (8u32, &peer_stats.upload_speed),   // For sorting
             ],
         );
     }
