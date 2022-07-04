@@ -5,6 +5,7 @@ pub mod encoder_decoder;
 pub mod graphic_interface;
 pub mod logger;
 pub mod peer;
+pub mod statistics;
 pub mod storage_manager;
 pub mod torrent_handler;
 pub mod torrent_parser;

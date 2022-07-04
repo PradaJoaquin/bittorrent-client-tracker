@@ -5,13 +5,12 @@ use crate::{
     config::cfg::Cfg,
     logger::logger_receiver::Logger,
     logger::logger_sender::LoggerSender,
+    statistics::statistics_updater::StatisticsUpdater,
+    statistics::torrent_stats::TorrentStats,
     torrent_handler::{handler::TorrentHandler, status::AtomicTorrentStatus},
     torrent_parser::parser::TorrentParser,
     torrent_parser::torrent::Torrent,
 };
-
-use super::{statistics::Runner, statistics::Statistics};
-
 use gtk::glib;
 use std::{
     collections::HashMap,
@@ -62,7 +61,7 @@ impl BtClient {
     }
 
     /// Method for starting the torrent downloading process.
-    pub fn run(&self, sender: glib::Sender<Vec<Statistics>>) {
+    pub fn run(&self, sender: glib::Sender<Vec<TorrentStats>>) {
         let logger = self.logger.new_sender();
         logger.info("Starting client...");
 
@@ -87,7 +86,7 @@ impl BtClient {
             }
         });
 
-        let runner = Runner::new(handler_status_list, sender);
+        let runner = StatisticsUpdater::new(handler_status_list, sender);
         let _jh = self.spawn_statistics_runner(runner);
 
         self.start_server(torrents_with_status);
@@ -132,7 +131,10 @@ impl BtClient {
         })
     }
 
-    fn spawn_statistics_runner(&self, runner: Runner) -> Result<JoinHandle<()>, io::Error> {
+    fn spawn_statistics_runner(
+        &self,
+        runner: StatisticsUpdater,
+    ) -> Result<JoinHandle<()>, io::Error> {
         let logger = self.logger.new_sender();
 
         let builder = thread::Builder::new().name("Torrent statistics".to_string());
