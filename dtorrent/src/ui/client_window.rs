@@ -22,7 +22,9 @@ impl ClientWindow {
             .object("window")
             .ok_or(UserInterfaceError::WindowBuildingError)?;
         window.set_title("dTorrent");
-        window.set_icon_from_file("./src/ui/logo.ico").unwrap();
+        window
+            .set_icon_from_file("./dtorrent/src/ui/logo.ico")
+            .unwrap();
 
         let window_data = Arc::new(ClientWindowData::new(&builder)?);
         let window_data_clone = window_data.clone();
