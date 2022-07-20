@@ -1,4 +1,4 @@
-use crate::encoder_decoder::bencode::Bencode;
+use bencoder::bencode::Bencode;
 use std::io::Read;
 use std::io::Write;
 use std::net::TcpStream;

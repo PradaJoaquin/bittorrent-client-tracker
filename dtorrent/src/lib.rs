@@ -1,8 +1,6 @@
 pub mod bt_client;
 pub mod bt_server;
 pub mod config;
-pub mod encoder_decoder;
-pub mod graphic_interface;
 pub mod logger;
 pub mod peer;
 pub mod statistics;

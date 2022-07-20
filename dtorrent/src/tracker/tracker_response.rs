@@ -1,4 +1,5 @@
-use crate::encoder_decoder::bencode::{Bencode, BencodeError};
+use bencoder::bencode::{Bencode, BencodeError};
+
 use crate::peer::bt_peer::{BtPeer, BtPeerError};
 
 /// `TrackerResponse` struct containing a tracker response.
@@ -133,7 +134,6 @@ impl TrackerResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::encoder_decoder::bencode::Bencode;
     use std::collections::BTreeMap;
 
     #[test]

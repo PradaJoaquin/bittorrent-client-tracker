@@ -12,8 +12,9 @@ Cargo.lock
 **/*.rs.bk
 *.idea
 *.torrent
-*.log
 
 # Default downloads directory
-/downloads
-/torrents
+**/downloads
+**/torrents
+**/logs
+*.log

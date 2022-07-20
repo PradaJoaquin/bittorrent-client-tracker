@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, num::ParseIntError};
 
 use sha1::{Digest, Sha1};
 
-use crate::encoder_decoder::bencode::{Bencode, ToBencode};
+use bencoder::bencode::{Bencode, ToBencode};
 
 use super::info::{FromInfoError, Info};
 

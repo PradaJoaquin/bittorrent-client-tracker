@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::torrent::{FromTorrentError, Torrent};
-use crate::encoder_decoder::bencode::{Bencode, BencodeError};
+use bencoder::bencode::{Bencode, BencodeError};
 
 #[derive(Debug)]
 pub enum ParseError {

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::encoder_decoder::bencode::{Bencode, ToBencode};
+use bencoder::bencode::{Bencode, ToBencode};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Info {

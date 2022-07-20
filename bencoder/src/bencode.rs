@@ -64,7 +64,7 @@ impl Bencode {
     /// # Example
     ///
     /// ```rust
-    /// use bit_torrent_rustico::encoder_decoder::bencode::Bencode;
+    /// use bencoder::bencode::Bencode;
     ///
     /// // String
     /// let data = b"5:hello";
@@ -168,7 +168,7 @@ impl Bencode {
     /// # Example
     ///
     /// ```rust
-    /// use bit_torrent_rustico::encoder_decoder::bencode::Bencode;
+    /// use bencoder::bencode::Bencode;
     ///
     /// // String
     /// let data = String::from("spam");
