@@ -3,5 +3,6 @@
 members = [
     "dtorrent",
     "dtracker",
-    "bencoder"
+    "bencoder",
+    "logger"
 ]

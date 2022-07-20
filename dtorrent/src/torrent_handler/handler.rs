@@ -1,7 +1,6 @@
 use super::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
 use crate::{
     config::cfg::Cfg,
-    logger::logger_sender::LoggerSender,
     peer::{
         bt_peer::BtPeer,
         peer_session::{PeerSession, PeerSessionError},
@@ -12,6 +11,7 @@ use crate::{
         tracker_response::TrackerResponse,
     },
 };
+use logger::logger_sender::LoggerSender;
 use std::{
     sync::{
         mpsc::{self, Receiver},

@@ -7,11 +7,11 @@ use std::{
 };
 
 use chrono::{DateTime, Local};
+use logger::logger_sender::LoggerSender;
 use sha1::{Digest, Sha1};
 
 use crate::{
     config::cfg::Cfg,
-    logger::logger_sender::LoggerSender,
     torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError},
     torrent_parser::torrent::Torrent,
 };

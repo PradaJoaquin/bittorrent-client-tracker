@@ -1,7 +1,7 @@
+use logger::logger_sender::LoggerSender;
 use std::{io::Write, net::TcpStream, sync::Arc};
 
 use crate::{
-    logger::logger_sender::LoggerSender,
     torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError},
     torrent_parser::torrent::Torrent,
 };

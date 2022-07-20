@@ -1,9 +1,9 @@
 use crate::config::cfg::Cfg;
-use crate::logger::logger_sender::LoggerSender;
 use crate::peer::bt_peer::{BtPeer, BtPeerError};
 use crate::peer::peer_session::{PeerSession, PeerSessionError};
 use crate::torrent_handler::status::{AtomicTorrentStatus, AtomicTorrentStatusError};
 use crate::torrent_parser::torrent::Torrent;
+use logger::logger_sender::LoggerSender;
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;

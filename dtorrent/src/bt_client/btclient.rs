@@ -3,8 +3,6 @@ use crate::{
     bt_client::error_message::ErrorMessage,
     bt_server::server::BtServer,
     config::cfg::Cfg,
-    logger::logger_receiver::Logger,
-    logger::logger_sender::LoggerSender,
     statistics::statistics_updater::StatisticsUpdater,
     statistics::torrent_stats::TorrentStats,
     torrent_handler::{handler::TorrentHandler, status::AtomicTorrentStatus},
@@ -12,6 +10,8 @@ use crate::{
     torrent_parser::torrent::Torrent,
 };
 use gtk::glib;
+use logger::logger_receiver::Logger;
+use logger::logger_sender::LoggerSender;
 use rand::Rng;
 use std::{
     collections::HashMap,

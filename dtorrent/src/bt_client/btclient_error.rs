@@ -1,5 +1,5 @@
 use crate::bt_client::error_message::ErrorMessage;
-use crate::logger::logger_error::LoggerError;
+use logger::logger_error::LoggerError;
 
 /// Represents an error that happened while initializing a BtClient struct
 #[derive(Debug)]
