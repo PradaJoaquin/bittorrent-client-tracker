@@ -1,4 +1,4 @@
-use bit_torrent_rustico::ui::setup;
+use dtorrent::ui::setup;
 use gtk::gio::ApplicationFlags;
 use gtk::prelude::*;
 use gtk::Application;

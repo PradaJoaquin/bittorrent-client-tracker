@@ -4,7 +4,7 @@ use std::fmt::Debug;
 Represents the inside message of an error, and can be nicely printed using Debug.
 
 ```rust
-use bit_torrent_rustico::bt_client::error_message::ErrorMessage;
+use dtorrent::bt_client::error_message::ErrorMessage;
 
 #[derive(Debug)]
 enum Errors {
