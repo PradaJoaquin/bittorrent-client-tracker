@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
+
+use super::http_method::HttpMethod;
 
 /// A struct that represents a HTTP request.
 ///
@@ -7,7 +9,7 @@ use std::collections::HashMap;
 /// * `endpoint`: The endpoint of the request.
 /// * `params`: The parameters of the request.
 pub struct Http {
-    pub method: String,
+    pub method: HttpMethod,
     pub endpoint: String,
     pub params: HashMap<String, String>,
 }
@@ -15,6 +17,7 @@ pub struct Http {
 #[derive(Debug)]
 pub enum HttpError {
     ParseError,
+    HttpMethodNotSupported,
 }
 
 impl Http {
@@ -24,8 +27,10 @@ impl Http {
         let line = lines.next().ok_or(HttpError::ParseError)?;
 
         let mut line_split = line.split(|&b| b == b' ');
-        let method =
-            String::from_utf8_lossy(line_split.next().ok_or(HttpError::ParseError)?).to_string();
+        let method = HttpMethod::from_str(
+            &String::from_utf8_lossy(line_split.next().ok_or(HttpError::ParseError)?).to_string(),
+        )
+        .map_err(|_| HttpError::HttpMethodNotSupported)?;
 
         let mut endpoint_split = line_split
             .next()
@@ -81,7 +86,7 @@ mod tests {
         params.insert("left".to_string(), "396361728".to_string());
         params.insert("event".to_string(), "started".to_string());
 
-        assert_eq!(http.method, "GET".to_string());
+        assert_eq!(http.method, HttpMethod::from_str("GET").unwrap());
         assert_eq!(http.endpoint, "/announce");
         assert_eq!(http.params, params);
     }
