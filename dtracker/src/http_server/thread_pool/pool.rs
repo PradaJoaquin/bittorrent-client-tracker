@@ -5,7 +5,7 @@ use std::sync::{
 
 use logger::logger_sender::LoggerSender;
 
-use super::worker::{Message, Worker};
+use crate::http_server::thread_pool::worker::{Message, Worker};
 
 /// Struct that represents a thread pool that spawns a specified number of worker threads and allows to process connections concurrently.
 /// Each idle thread in the pool is available to handle a task.

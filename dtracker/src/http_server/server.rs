@@ -1,11 +1,12 @@
 use std::{net::TcpListener, sync::Arc};
 
+use logger::logger_sender::LoggerSender;
+
+use crate::http_server::request_handler::RequestHandler;
 use crate::{
-    http_server::thread_pool::ThreadPool, tracker_request::request::Request,
+    http_server::thread_pool::pool::ThreadPool,
     tracker_status::atomic_tracker_status::AtomicTrackerStatus,
 };
-
-use logger::logger_sender::LoggerSender;
 
 /// Struct that represents the current status of the tracker.
 ///
@@ -42,10 +43,10 @@ impl Server {
 
         for stream in self.listener.incoming() {
             let stream = stream.unwrap();
-            let mut request = Request::new(stream);
+            let mut request_handler = RequestHandler::new(stream);
             let logger = self.logger_sender.clone();
             self.pool.execute(move || {
-                if let Err(error) = request.handle() {
+                if let Err(error) = request_handler.handle() {
                     logger.error(&format!(
                         "An error occurred while attempting to handle a request: {:?}",
                         error

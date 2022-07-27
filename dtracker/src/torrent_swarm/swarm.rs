@@ -8,15 +8,15 @@ use crate::tracker_peer::peer::Peer;
 /// * `peers`: The current peers of the torrent.
 /// * `last_updated`: The last time the torrent status was updated.
 #[derive(Debug, Clone)]
-pub struct TorrentStatus {
+pub struct Swarm {
     pub peers: Vec<Peer>,
     pub last_updated: DateTime<Local>,
 }
 
-impl Default for TorrentStatus {
+impl Default for Swarm {
     /// Creates a new tracker status.
     fn default() -> Self {
-        TorrentStatus {
+        Swarm {
             peers: Vec::new(),
             last_updated: Local::now(),
         }

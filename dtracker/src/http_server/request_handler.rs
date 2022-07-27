@@ -8,33 +8,34 @@ use crate::{
     http::{http_method::HttpMethod, http_parser::Http, http_status::HttpStatus},
 };
 
-pub struct Request {
+pub struct RequestHandler {
     pub stream: TcpStream,
 }
 
 #[derive(Debug)]
-pub enum RequestError {
+pub enum RequestHandlerError {
     InvalidEndpointError,
     ParseHttpError,
 }
 
-impl Request {
-    pub fn new(stream: TcpStream) -> Request {
-        Request { stream }
+impl RequestHandler {
+    pub fn new(stream: TcpStream) -> RequestHandler {
+        RequestHandler { stream }
     }
 
-    pub fn handle(&mut self) -> Result<(), RequestError> {
-        let mut buf = vec![];
-        self.stream.read_to_end(&mut buf).unwrap();
+    pub fn handle(&mut self) -> Result<(), RequestHandlerError> {
+        // TODO: read HTTP message length correctly
+        let mut buf = [0; 1024];
+        self.stream.read(&mut buf).unwrap();
 
         // TODO: should match and send error (400 BAD REQUEST) through stream before returning error
-        let http_request = Http::parse(&buf).map_err(|_| RequestError::ParseHttpError)?;
+        let http_request = Http::parse(&buf).map_err(|_| RequestHandlerError::ParseHttpError)?;
 
         let (status_line, response) = if http_request.method.eq(&HttpMethod::Get) {
             let response = match http_request.endpoint.as_str() {
                 "/announce" => self.handle_announce(http_request),
                 "/stats" => self.handle_stats(http_request),
-                _ => return Err(RequestError::InvalidEndpointError),
+                _ => return Err(RequestHandlerError::InvalidEndpointError),
             };
             (HttpStatus::Ok, response)
         } else {
@@ -47,13 +48,20 @@ impl Request {
     }
 
     fn handle_announce(&self, http_request: Http) -> String {
-        let announce_response = AnnounceResponse::from(http_request.params);
-        String::from("")
+        AnnounceResponse::from(http_request.params);
+        String::from("announce")
     }
 
+    /// Receives a `since` param that represents the period for statistics in hours.
     fn handle_stats(&self, http_request: Http) -> String {
-        // let stats_response = Stats::from(http_request.params);
-        String::from("")
+        let since = http_request.params.get("since").unwrap();
+
+        // Obtener cantidades de peers conectados, seeders, leechers y torrents
+
+        // Distribuir en "buckets" de a minutos / horas
+
+        // Armar string JSON
+        String::from("stats")
     }
 
     fn create_response(contents: &str, status_line: HttpStatus) -> std::io::Result<String> {
@@ -68,9 +76,9 @@ impl Request {
     }
 
     fn send_response(&mut self, contents: &str, status_line: HttpStatus) -> std::io::Result<()> {
-        self.stream
-            .write_all(Self::create_response(contents, status_line)?.as_bytes())
-            .unwrap();
+        let response = Self::create_response(contents, status_line)?;
+
+        self.stream.write_all(response.as_bytes())?;
         self.stream.flush().unwrap();
 
         Ok(())
