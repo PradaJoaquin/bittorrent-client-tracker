@@ -52,7 +52,7 @@ impl AnnounceResponse {
 
         let peer = Peer::from_request(announce_request.clone(), peer_ip);
 
-        let (peers_list, complete, incomplete) = tracker_status.incoming_peer(
+        let active_peers = tracker_status.incoming_peer(
             announce_request.info_hash,
             peer,
             announce_request.numwant,
@@ -60,7 +60,11 @@ impl AnnounceResponse {
 
         // TODO: Handle announce_request.compact == true case.
 
-        Self::create_success_response(peers_list, complete, incomplete)
+        Self::create_success_response(
+            active_peers.peers,
+            active_peers.seeders,
+            active_peers.leechers,
+        )
     }
 
     fn create_error_response(failure_reason: String) -> Self {

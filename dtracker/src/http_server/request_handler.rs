@@ -9,6 +9,7 @@ use bencoder::bencode::Bencode;
 use crate::{
     announce::announce_response::AnnounceResponse,
     http::{http_method::HttpMethod, http_parser::Http, http_status::HttpStatus},
+    stats::stats_updater::StatsUpdater,
     tracker_status::atomic_tracker_status::AtomicTrackerStatus,
 };
 
@@ -42,6 +43,7 @@ impl RequestHandler {
     pub fn handle(
         &mut self,
         tracker_status: Arc<AtomicTrackerStatus>,
+        stats_updater: Arc<StatsUpdater>,
     ) -> Result<(), RequestHandlerError> {
         // TODO: read HTTP message length correctly
         let mut buf = [0; 1024];
@@ -55,7 +57,7 @@ impl RequestHandler {
                 "/announce" => {
                     self.handle_announce(http_request, tracker_status, self.get_peer_ip()?)
                 }
-                "/stats" => self.handle_stats(http_request, tracker_status),
+                "/stats" => self.handle_stats(http_request, tracker_status, stats_updater),
                 _ => return Err(RequestHandlerError::InvalidEndpointError),
             };
             (HttpStatus::Ok, response)
@@ -82,10 +84,15 @@ impl RequestHandler {
     }
 
     /// Receives a `since` param that represents the period for statistics in hours.
-    fn handle_stats(&self, http_request: Http, tracker_status: Arc<AtomicTrackerStatus>) -> Vec<u8> {
+    fn handle_stats(
+        &self,
+        http_request: Http,
+        tracker_status: Arc<AtomicTrackerStatus>,
+        stats_updater: Arc<StatsUpdater>,
+    ) -> Vec<u8> {
         let since = http_request.params.get("since").unwrap();
 
-        // Obtener cantidades de peers conectados, seeders, leechers y torrents
+        // Obtener cantidades de peers conectados, seeders, leechers y torrents a traves del stats_updater
 
         // Distribuir en "buckets" de a minutos / horas
 

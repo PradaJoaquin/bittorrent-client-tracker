@@ -5,16 +5,23 @@ use std::{
 
 use chrono::Duration;
 
-use crate::{torrent_swarm::swarm::Swarm, tracker_peer::peer::Peer};
+use crate::{
+    torrent_swarm::swarm::{ActivePeers, Swarm},
+    tracker_peer::peer::Peer,
+};
+
+use super::current_tracker_stats::CurrentTrackerStats;
 
 const PEER_HOURS_TIMEOUT: i64 = 1;
+type InfoHash = [u8; 20];
 
 /// Struct that represents the current status of the tracker.
 ///
 /// ## Fields
 /// * `torrents`: The current torrents supported by the tracker. The key is the torrent `Info Hash`. The value is the `Torrent Status`.
+#[derive(Debug)]
 pub struct AtomicTrackerStatus {
-    torrent_swarms: Mutex<HashMap<[u8; 20], Swarm>>, // [u8; 20] is the info hash of the torrent.
+    torrent_swarms: Mutex<HashMap<InfoHash, Swarm>>,
 }
 
 impl Default for AtomicTrackerStatus {
@@ -27,7 +34,7 @@ impl Default for AtomicTrackerStatus {
 }
 
 impl AtomicTrackerStatus {
-    /// Adds or updates a peer for a torrent in the tracker status.
+    /// Adds or updates a peer for a torrent in the tracker status and returns an `ActivePeers` struct.
     ///
     /// ## Arguments
     /// * `info_hash`: The info hash of the torrent.
@@ -35,13 +42,8 @@ impl AtomicTrackerStatus {
     /// * `numwant`: The number of peers wanted by the client.
     ///
     /// ## Returns
-    /// * `(Vec<Peer>, u32, u32)`: The peers of the torrent, the number of seeders and leechers.
-    pub fn incoming_peer(
-        &self,
-        info_hash: [u8; 20],
-        peer: Peer,
-        wanted_peers: u32,
-    ) -> (Vec<Peer>, u32, u32) {
+    /// * `ActivePeers`: Struct containing the peers of the torrent requested, the number of seeders and leechers.
+    pub fn incoming_peer(&self, info_hash: InfoHash, peer: Peer, wanted_peers: u32) -> ActivePeers {
         let mut swarms = self.lock_swarms();
         let torrent_swarm = swarms
             .entry(info_hash)
@@ -52,6 +54,26 @@ impl AtomicTrackerStatus {
         torrent_swarm.get_active_peers(wanted_peers)
     }
 
+    /// Gets the current statistics of the tracker.
+    ///
+    /// ## Returns
+    /// * `CurrentTrackerStats`: Struct containing the total number of torrents, seeders and leechers.
+    pub fn get_global_statistics(&self) -> CurrentTrackerStats {
+        let swarms = self.lock_swarms();
+
+        let total_torrents = swarms.len() as u32;
+        let mut global_seeders = 0;
+        let mut global_leechers = 0;
+
+        for swarm in swarms.values() {
+            let (seeders, leechers) = swarm.get_current_seeders_and_leechers();
+            global_seeders += seeders;
+            global_leechers += leechers;
+        }
+
+        CurrentTrackerStats::new(total_torrents, global_seeders, global_leechers)
+    }
+
     /// Removes any inactive peers from each swarm.
     pub fn remove_inactive_peers(&self) {
         for swarm in self.lock_swarms().values_mut() {
@@ -59,7 +81,7 @@ impl AtomicTrackerStatus {
         }
     }
 
-    fn lock_swarms(&self) -> MutexGuard<HashMap<[u8; 20], Swarm>> {
+    fn lock_swarms(&self) -> MutexGuard<HashMap<InfoHash, Swarm>> {
         self.torrent_swarms.lock().unwrap() // Unwrap is safe here because we're the only ones who call this function.
     }
 }
@@ -188,7 +210,13 @@ mod tests {
         let all_swarms = status.lock_swarms();
         let swarm = all_swarms.get(&info_hash)?;
 
-        Some(swarm.get_active_peers(wanted_peers))
+        let active_peers = swarm.get_active_peers(wanted_peers);
+
+        Some((
+            active_peers.peers,
+            active_peers.seeders,
+            active_peers.leechers,
+        ))
     }
 
     fn create_test_seeder(peer_id: [u8; 20]) -> Peer {

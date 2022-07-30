@@ -1,17 +1,18 @@
-use std::io;
 use std::sync::Arc;
+use std::{io, thread::spawn};
 
-use logger::{logger_error::LoggerError, logger_receiver::Logger};
+use logger::{logger_error::LoggerError, logger_receiver::Logger, logger_sender::LoggerSender};
+use std::time::Duration;
 
 use crate::{
-    http_server::server::Server, tracker_status::atomic_tracker_status::AtomicTrackerStatus,
+    http_server::server::Server, stats::stats_updater::StatsUpdater,
+    tracker_status::atomic_tracker_status::AtomicTrackerStatus,
 };
 
 /// Struct that represents the Tracker itself.
 ///
 /// Serves as a starting point for the application.
 pub struct BtTracker {
-    _logger: Logger,
     server: Server,
 }
 
@@ -22,6 +23,8 @@ pub enum BtTrackerError {
     StartingServerError(io::Error),
 }
 
+const STATS_UPDATER_SECONDS_TIMEOUT: u64 = 60;
+
 impl BtTracker {
     /// Creates a new BtTracker
     pub fn init() -> Result<Self, BtTrackerError> {
@@ -30,13 +33,15 @@ impl BtTracker {
 
         let tracker_status = Arc::new(AtomicTrackerStatus::default());
 
-        let server = Server::init(tracker_status.clone(), logger_sender)
+        let stats_updater =
+            Self::spawn_stats_updater(tracker_status.clone(), logger_sender.clone());
+
+        let server = Server::init(tracker_status, stats_updater, logger_sender.clone())
             .map_err(BtTrackerError::CreatingServerError)?;
 
-        Ok(Self {
-            _logger: logger,
-            server,
-        })
+        logger_sender.info("Tracker started");
+
+        Ok(Self { server })
     }
 
     /// Starts the server for handling requests.
@@ -44,5 +49,21 @@ impl BtTracker {
         self.server
             .serve()
             .map_err(BtTrackerError::StartingServerError)
+    }
+
+    fn spawn_stats_updater(
+        tracker_status: Arc<AtomicTrackerStatus>,
+        logger_sender: LoggerSender,
+    ) -> Arc<StatsUpdater> {
+        let stats_updater = Arc::new(StatsUpdater::new(
+            tracker_status,
+            Duration::from_secs(STATS_UPDATER_SECONDS_TIMEOUT),
+            logger_sender,
+        ));
+        let updater = stats_updater.clone();
+        spawn(move || {
+            updater.run();
+        });
+        stats_updater
     }
 }
