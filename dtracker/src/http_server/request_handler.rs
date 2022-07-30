@@ -102,7 +102,7 @@ impl RequestHandler {
 
     fn create_response(mut contents: Vec<u8>, status_line: HttpStatus) -> Vec<u8> {
         let response = format!(
-            "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n",
+            "HTTP/1.1 {}\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n",
             status_line.to_string(),
             contents.len(),
         );
