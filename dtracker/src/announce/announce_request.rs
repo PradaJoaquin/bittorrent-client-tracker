@@ -123,7 +123,7 @@ impl AnnounceRequest {
             || Err(AnnounceRequestError::InvalidPort),
             |p| {
                 p.parse::<u16>()
-                    .map_err(|_| AnnounceRequestError::InvalidPeerId)
+                    .map_err(|_| AnnounceRequestError::InvalidPort)
             },
         )?;
         Ok(port)
