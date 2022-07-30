@@ -32,10 +32,10 @@ impl StatsResponse {
         let since_in_hours = query_params
             .get("since")
             .ok_or(StatsResponseError::InvalidQueryParamError)?
-            .parse::<i64>()
+            .parse::<u64>()
             .map_err(|_| StatsResponseError::InvalidQueryParamError)?;
 
-        let history = stats_updater.get_history(Duration::hours(since_in_hours));
+        let history = stats_updater.get_history(Duration::hours(since_in_hours as i64));
 
         Ok(Self {
             bucket_size_in_minutes: stats_updater.get_timeout().num_minutes(),

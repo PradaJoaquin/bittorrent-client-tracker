@@ -46,7 +46,7 @@ impl Server {
         self.logger_sender.info("Serving on http://127.0.0.1:8080");
 
         for stream in self.listener.incoming() {
-            let stream = stream.unwrap();
+            let stream = stream?;
             let mut request_handler = RequestHandler::new(stream);
             let logger = self.logger_sender.clone();
             let status_clone = self.status.clone();

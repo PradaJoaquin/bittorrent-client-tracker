@@ -88,7 +88,7 @@ impl AnnounceRequest {
             || Err(AnnounceRequestError::InvalidInfoHash),
             |i| {
                 Self::decode_hex(&decode(i))
-                    .unwrap()
+                    .map_err(|_| AnnounceRequestError::InvalidInfoHash)?
                     .try_into()
                     .map_err(|_| AnnounceRequestError::InvalidInfoHash)
             },
@@ -110,7 +110,7 @@ impl AnnounceRequest {
             || Err(AnnounceRequestError::InvalidPeerId),
             |i| {
                 Self::decode_hex(&decode(i))
-                    .unwrap()
+                    .map_err(|_| AnnounceRequestError::InvalidPeerId)?
                     .try_into()
                     .map_err(|_| AnnounceRequestError::InvalidPeerId)
             },
