@@ -4,6 +4,7 @@ use std::str::FromStr;
 pub enum HttpStatus {
     Ok,
     NotFound,
+    BadRequest,
 }
 
 impl FromStr for HttpStatus {
@@ -13,6 +14,7 @@ impl FromStr for HttpStatus {
         match s {
             "200 OK" => Ok(HttpStatus::Ok),
             "404 NOT FOUND" => Ok(HttpStatus::NotFound),
+            "400 BAD REQUEST" => Ok(HttpStatus::BadRequest),
             _ => Err(()),
         }
     }
@@ -23,6 +25,7 @@ impl ToString for HttpStatus {
         match self {
             Self::Ok => "200 OK".to_string(),
             Self::NotFound => "404 NOT FOUND".to_string(),
+            Self::BadRequest => "400 BAD REQUEST".to_string(),
         }
     }
 }

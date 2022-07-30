@@ -24,6 +24,8 @@ pub enum RequestHandlerError {
     ParseHttpError,
     GettingPeerIpError,
     FromUtfError(std::string::FromUtf8Error),
+    BadRequest,
+    WritingResponseError,
 }
 
 impl RequestHandler {
@@ -47,10 +49,26 @@ impl RequestHandler {
     ) -> Result<(), RequestHandlerError> {
         // TODO: read HTTP message length correctly
         let mut buf = [0; 1024];
-        self.stream.read(&mut buf).unwrap();
+        let bytes_read = match self.stream.read(&mut buf) {
+            Ok(bytes_read) => bytes_read,
+            Err(_) => {
+                self.send_bad_request()?;
+                return Err(RequestHandlerError::BadRequest);
+            }
+        };
+        if bytes_read == 0 {
+            self.send_bad_request()?;
+            return Err(RequestHandlerError::BadRequest);
+        }
 
-        // TODO: should match and send error (400 BAD REQUEST) through stream before returning error
-        let http_request = Http::parse(&buf).map_err(|_| RequestHandlerError::ParseHttpError)?;
+        let http_request = match Http::parse(&buf).map_err(|_| RequestHandlerError::ParseHttpError)
+        {
+            Ok(http_request) => http_request,
+            Err(_) => {
+                self.send_bad_request()?;
+                return Err(RequestHandlerError::BadRequest);
+            }
+        };
 
         let (status_line, response) = if http_request.method.eq(&HttpMethod::Get) {
             let response = match http_request.endpoint.as_str() {
@@ -58,15 +76,25 @@ impl RequestHandler {
                     self.handle_announce(http_request, tracker_status, self.get_peer_ip()?)
                 }
                 "/stats" => self.handle_stats(http_request, tracker_status, stats_updater),
-                _ => return Err(RequestHandlerError::InvalidEndpointError),
+                _ => {
+                    self.send_bad_request()?;
+                    return Err(RequestHandlerError::InvalidEndpointError);
+                }
             };
             (HttpStatus::Ok, response)
         } else {
             (HttpStatus::NotFound, "".as_bytes().to_vec())
         };
 
-        self.send_response(response, status_line).unwrap();
+        self.send_response(response, status_line)
+            .map_err(|_| RequestHandlerError::WritingResponseError)?;
 
+        Ok(())
+    }
+
+    fn send_bad_request(&mut self) -> Result<(), RequestHandlerError> {
+        self.send_response("".as_bytes().to_vec(), HttpStatus::BadRequest)
+            .map_err(|_| RequestHandlerError::WritingResponseError)?;
         Ok(())
     }
 
@@ -115,7 +143,7 @@ impl RequestHandler {
         let response = Self::create_response(contents, status_line);
 
         self.stream.write_all(&response)?;
-        self.stream.flush().unwrap();
+        self.stream.flush()?;
 
         Ok(())
     }
