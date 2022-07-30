@@ -1,4 +1,4 @@
-use super::url_encoder;
+use url_encoder::url_encoder::encode;
 
 /// `QueryParams` struct containing the query parameters information.
 ///
@@ -33,7 +33,7 @@ impl QueryParams {
     pub fn build(&self) -> String {
         format!(
             "?info_hash={}&peer_id={}&port={}&uploaded=0&downloaded=0&left={}&event=started",
-            url_encoder::encode(self.info_hash.as_str()),
+            encode(self.info_hash.as_str()),
             self.client_peer_id,
             self.client_port,
             self.info_length
@@ -58,7 +58,7 @@ mod tests {
             query_params.build(),
             format!(
                 "?info_hash={}&peer_id={}&port={}&uploaded=0&downloaded=0&left={}&event=started",
-                url_encoder::encode(info_hash.as_str()),
+                encode(info_hash.as_str()),
                 peer_id,
                 client_port,
                 length

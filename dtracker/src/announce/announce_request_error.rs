@@ -11,6 +11,7 @@ pub enum AnnounceRequestError {
     InvalidNumwant,
     InvalidKey,
     InvalidTrackerId,
+    InvalidEvent,
 }
 
 impl ToString for AnnounceRequestError {
@@ -26,6 +27,7 @@ impl ToString for AnnounceRequestError {
             AnnounceRequestError::InvalidNumwant => "Invalid numwant".to_string(),
             AnnounceRequestError::InvalidKey => "Invalid key".to_string(),
             AnnounceRequestError::InvalidTrackerId => "Invalid tracker_id".to_string(),
+            AnnounceRequestError::InvalidEvent => "Invalid event".to_string(),
         }
     }
 }

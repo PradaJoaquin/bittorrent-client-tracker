@@ -1,6 +1,8 @@
-use std::{collections::HashMap, net::Ipv4Addr};
+use std::{collections::HashMap, num::ParseIntError, str::FromStr};
 
 use super::announce_request_error::AnnounceRequestError;
+use crate::tracker_peer::event::PeerEvent;
+use url_encoder::url_encoder::decode;
 
 /// Struct representing the announce request to a tracker.
 ///
@@ -21,7 +23,7 @@ use super::announce_request_error::AnnounceRequestError;
 /// * `numwant`: The number of peers that the client would like to receive in the response. If absent, the client requests a default number of peers.
 /// * `key`: *(Optional)* The key used to identify the client. If absent, the client will be identified by its peer id.
 /// * `trackerid`: *(Optional)* The id of the tracker. If absent, the tracker will be identified by its IP address.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AnnounceRequest {
     pub info_hash: [u8; 20],
     pub peer_id: [u8; 20],
@@ -31,8 +33,8 @@ pub struct AnnounceRequest {
     pub left: u64,
     pub compact: bool,
     pub no_peer_id: bool,
-    // pub event: Option<PeerEvent>,
-    pub ip: Option<Ipv4Addr>,
+    pub event: Option<PeerEvent>,
+    pub ip: Option<String>,
     pub numwant: u32,
     pub key: Option<String>,
     pub tracker_id: Option<String>,
@@ -56,8 +58,8 @@ impl AnnounceRequest {
         // Optional and default params:
         let compact = Self::get_compact(&query_params);
         let no_peer_id = Self::get_no_peer_id(&query_params);
-        let ip = Self::get_ip(&query_params)?;
-        // let event = PeerEvent::None;
+        let event = Self::get_event(&query_params)?;
+        let ip = Self::get_ip(&query_params);
         let numwant = Self::get_numwant(&query_params)?;
         let key = Self::get_key(&query_params);
         let tracker_id = Self::get_tracker_id(&query_params);
@@ -71,6 +73,7 @@ impl AnnounceRequest {
             left,
             compact,
             no_peer_id,
+            event,
             ip,
             numwant,
             key,
@@ -84,12 +87,20 @@ impl AnnounceRequest {
         let info_hash = query_params_map.get("info_hash").map_or_else(
             || Err(AnnounceRequestError::InvalidInfoHash),
             |i| {
-                i.as_bytes()
+                Self::decode_hex(&decode(i))
+                    .unwrap()
                     .try_into()
                     .map_err(|_| AnnounceRequestError::InvalidInfoHash)
             },
         )?;
         Ok(info_hash)
+    }
+
+    fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+            .collect()
     }
 
     fn get_peer_id(
@@ -98,7 +109,8 @@ impl AnnounceRequest {
         let peer_id = query_params_map.get("peer_id").map_or_else(
             || Err(AnnounceRequestError::InvalidPeerId),
             |i| {
-                i.as_bytes()
+                Self::decode_hex(&decode(i))
+                    .unwrap()
                     .try_into()
                     .map_err(|_| AnnounceRequestError::InvalidPeerId)
             },
@@ -165,16 +177,23 @@ impl AnnounceRequest {
             == "1"
     }
 
-    fn get_ip(
+    fn get_event(
         query_params_map: &HashMap<String, String>,
-    ) -> Result<Option<Ipv4Addr>, AnnounceRequestError> {
+    ) -> Result<Option<PeerEvent>, AnnounceRequestError> {
         match query_params_map
-            .get("ip")
-            .map(|s| s.parse::<Ipv4Addr>().ok())
+            .get("event")
+            .map(|e| PeerEvent::from_str(e).ok())
         {
-            Some(Some(ip)) => Ok(Some(ip)),
-            _ => Err(AnnounceRequestError::InvalidIp),
+            Some(ev) => match ev {
+                Some(ev) => Ok(Some(ev)),
+                None => Err(AnnounceRequestError::InvalidEvent),
+            },
+            None => Ok(None),
         }
+    }
+
+    fn get_ip(query_params_map: &HashMap<String, String>) -> Option<String> {
+        query_params_map.get("ip").map(|ip| ip.to_string())
     }
 
     fn get_numwant(

@@ -34,6 +34,24 @@ impl ToBencode for i64 {
     }
 }
 
+impl ToBencode for u64 {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BNumber((*self) as i64)
+    }
+}
+
+impl ToBencode for u32 {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BNumber((*self).into())
+    }
+}
+
+impl ToBencode for u16 {
+    fn to_bencode(&self) -> Bencode {
+        Bencode::BNumber((*self).into())
+    }
+}
+
 impl ToBencode for i32 {
     fn to_bencode(&self) -> Bencode {
         Bencode::BNumber((*self).into())

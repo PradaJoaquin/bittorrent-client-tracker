@@ -11,8 +11,7 @@ use crate::{
 ///
 /// Serves as a starting point for the application.
 pub struct BtTracker {
-    logger: Logger,
-    tracker_status: Arc<AtomicTrackerStatus>,
+    _logger: Logger,
     server: Server,
 }
 
@@ -35,8 +34,7 @@ impl BtTracker {
             .map_err(BtTrackerError::CreatingServerError)?;
 
         Ok(Self {
-            logger,
-            tracker_status,
+            _logger: logger,
             server,
         })
     }

@@ -3,19 +3,18 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
-use chrono::{DateTime, Local};
+use chrono::Duration;
 
 use crate::{torrent_swarm::swarm::Swarm, tracker_peer::peer::Peer};
+
+const PEER_HOURS_TIMEOUT: i64 = 1;
 
 /// Struct that represents the current status of the tracker.
 ///
 /// ## Fields
 /// * `torrents`: The current torrents supported by the tracker. The key is the torrent `Info Hash`. The value is the `Torrent Status`.
-/// * `last_updated`: The last time the tracker status was updated.
 pub struct AtomicTrackerStatus {
-    torrent_swarms: Mutex<HashMap<[u8; 20], Swarm>>,
-    // [u8; 20] is the info hash of the torrent.
-    last_updated: Mutex<DateTime<Local>>,
+    torrent_swarms: Mutex<HashMap<[u8; 20], Swarm>>, // [u8; 20] is the info hash of the torrent.
 }
 
 impl Default for AtomicTrackerStatus {
@@ -23,66 +22,209 @@ impl Default for AtomicTrackerStatus {
     fn default() -> Self {
         AtomicTrackerStatus {
             torrent_swarms: Mutex::new(HashMap::new()),
-            last_updated: Mutex::new(Local::now()),
         }
     }
 }
 
 impl AtomicTrackerStatus {
     /// Adds or updates a peer for a torrent in the tracker status.
-    pub fn incoming_peer(&self, info_hash: [u8; 20], peer: Peer) {
+    ///
+    /// ## Arguments
+    /// * `info_hash`: The info hash of the torrent.
+    /// * `peer`: The peer to add or update.
+    /// * `numwant`: The number of peers wanted by the client.
+    ///
+    /// ## Returns
+    /// * `(Vec<Peer>, u32, u32)`: The peers of the torrent, the number of seeders and leechers.
+    pub fn incoming_peer(
+        &self,
+        info_hash: [u8; 20],
+        peer: Peer,
+        wanted_peers: u32,
+    ) -> (Vec<Peer>, u32, u32) {
         let mut swarms = self.lock_swarms();
-        let torrent_swarm = swarms.entry(info_hash).or_insert_with(Swarm::default);
-        torrent_swarm.peers.push(peer);
-        torrent_swarm.last_updated = Local::now();
+        let torrent_swarm = swarms
+            .entry(info_hash)
+            .or_insert_with(|| Swarm::new(Duration::hours(PEER_HOURS_TIMEOUT)));
 
-        self.update_last_updated();
+        torrent_swarm.announce(peer);
 
-        // TODO: write in disk the new status of the tracker.
+        torrent_swarm.get_active_peers(wanted_peers)
     }
 
-    /// Gets the current torrents supported by the tracker and their peers.
-    pub fn get_swarms(&self) -> HashMap<[u8; 20], Swarm> {
-        self.lock_swarms().clone()
-    }
-
-    fn update_last_updated(&self) {
-        *self.lock_last_updated() = Local::now();
+    /// Removes any inactive peers from each swarm.
+    pub fn remove_inactive_peers(&self) {
+        for swarm in self.lock_swarms().values_mut() {
+            swarm.remove_inactive_peers();
+        }
     }
 
     fn lock_swarms(&self) -> MutexGuard<HashMap<[u8; 20], Swarm>> {
         self.torrent_swarms.lock().unwrap() // Unwrap is safe here because we're the only ones who call this function.
     }
-
-    fn lock_last_updated(&self) -> MutexGuard<DateTime<Local>> {
-        self.last_updated.lock().unwrap() // Unwrap is safe here because we're the only ones who call this function.
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Sub;
+
+    use chrono::Local;
+
     use crate::tracker_peer::peer_status::PeerStatus;
 
     use super::*;
 
     #[test]
-    fn test_incoming_peer() {
-        let status = AtomicTrackerStatus::default();
-        let peer = create_test_peer();
-        status.incoming_peer([0; 20], peer);
-        assert_eq!(status.get_swarms().len(), 1);
+    fn test_incoming_seeder() {
+        let tracker_status = AtomicTrackerStatus::default();
+        let a_seeder = create_test_seeder([0; 20]);
+        let info_hash = [0; 20];
+
+        tracker_status.incoming_peer(info_hash, a_seeder, 50);
+
+        assert_there_is_only_one_seeder(&tracker_status, info_hash);
     }
 
-    fn create_test_peer() -> Peer {
+    #[test]
+    fn test_incoming_leecher() {
+        let tracker_status = AtomicTrackerStatus::default();
+        let a_leecher = create_test_leecher([0; 20]);
+        let info_hash = [0; 20];
+
+        tracker_status.incoming_peer(info_hash, a_leecher, 50);
+
+        assert_there_is_only_one_leecher(&tracker_status, info_hash);
+    }
+
+    #[test]
+    fn test_multiple_incoming_peers_on_the_same_torrent() {
+        let tracker_status = AtomicTrackerStatus::default();
+        let a_peer = create_test_seeder([0; 20]);
+        let another_peer = create_test_leecher([1; 20]);
+        let info_hash = [0; 20];
+
+        tracker_status.incoming_peer(info_hash, a_peer, 50);
+        tracker_status.incoming_peer(info_hash, another_peer, 50);
+
+        assert_there_are_only_these_peers(&tracker_status, info_hash, 1, 1);
+    }
+
+    #[test]
+    fn test_returning_peer() {
+        let tracker_status = AtomicTrackerStatus::default();
+        let peer_id = [0; 20];
+        let a_peer = create_test_leecher(peer_id);
+        let info_hash = [0; 20];
+
+        tracker_status.incoming_peer(info_hash, a_peer, 50);
+        tracker_status.incoming_peer(info_hash, create_test_seeder(peer_id), 50);
+
+        assert_there_is_only_one_seeder(&tracker_status, info_hash);
+    }
+
+    #[test]
+    fn test_peers_on_multiple_torrents() {
+        let tracker_status = AtomicTrackerStatus::default();
+        let a_peer = create_test_leecher([0; 20]);
+        let another_peer = create_test_leecher([1; 20]);
+        let an_info_hash = [0; 20];
+        let another_info_hash = [1; 20];
+
+        tracker_status.incoming_peer(an_info_hash, a_peer, 50);
+        tracker_status.incoming_peer(another_info_hash, another_peer, 50);
+
+        assert_there_is_only_one_leecher(&tracker_status, an_info_hash);
+        assert_there_is_only_one_leecher(&tracker_status, another_info_hash);
+    }
+
+    #[test]
+    fn test_peer_can_get_inactive() {
+        let tracker_status = AtomicTrackerStatus::default();
+        let peer_id = [0; 20];
+        let a_peer = create_test_seeder(peer_id);
+        let an_info_hash = [0; 20];
+        tracker_status.incoming_peer(an_info_hash, a_peer, 50);
+
+        let inactive_peer = create_inactive_peer(peer_id);
+        tracker_status.incoming_peer(an_info_hash, inactive_peer, 50);
+        tracker_status.remove_inactive_peers();
+
+        assert_there_are_only_these_peers(&tracker_status, an_info_hash, 0, 0);
+    }
+
+    fn assert_there_are_only_these_peers(
+        status: &AtomicTrackerStatus,
+        info_hash: [u8; 20],
+        expected_seeders: u32,
+        expected_leechers: u32,
+    ) {
+        let (active_peers, seeders, leechers) =
+            get_active_peers_for(status, info_hash, 50).unwrap();
+        assert_eq!(
+            active_peers.len(),
+            (expected_seeders + expected_leechers) as usize
+        );
+        assert_eq!(seeders, expected_seeders);
+        assert_eq!(leechers, expected_leechers);
+    }
+
+    fn assert_there_is_only_one_seeder(status: &AtomicTrackerStatus, info_hash: [u8; 20]) {
+        assert_there_are_only_these_peers(status, info_hash, 1, 0);
+        let (active_peers, _, _) = get_active_peers_for(status, info_hash, 50).unwrap();
+        assert!(active_peers[0].is_seeder());
+    }
+
+    fn assert_there_is_only_one_leecher(status: &AtomicTrackerStatus, info_hash: [u8; 20]) {
+        assert_there_are_only_these_peers(status, info_hash, 0, 1);
+        let (active_peers, _, _) = get_active_peers_for(status, info_hash, 50).unwrap();
+        assert!(active_peers[0].is_leecher());
+    }
+
+    pub fn get_active_peers_for(
+        status: &AtomicTrackerStatus,
+        info_hash: [u8; 20],
+        wanted_peers: u32,
+    ) -> Option<(Vec<Peer>, u32, u32)> {
+        let all_swarms = status.lock_swarms();
+        let swarm = all_swarms.get(&info_hash)?;
+
+        Some(swarm.get_active_peers(wanted_peers))
+    }
+
+    fn create_test_seeder(peer_id: [u8; 20]) -> Peer {
         let peer_status = PeerStatus {
             uploaded: 0,
             downloaded: 0,
             left: 0,
             event: None,
             last_seen: Local::now(),
-            real_ip: None,
         };
 
-        Peer::new([0; 20], "0".to_string(), 0, None, peer_status)
+        Peer::new(peer_id, "0".to_string(), 0, None, peer_status)
+    }
+
+    fn create_test_leecher(peer_id: [u8; 20]) -> Peer {
+        let peer_status = PeerStatus {
+            uploaded: 0,
+            downloaded: 0,
+            left: 3000,
+            event: None,
+            last_seen: Local::now(),
+        };
+
+        Peer::new(peer_id, "0".to_string(), 0, None, peer_status)
+    }
+
+    fn create_inactive_peer(peer_id: [u8; 20]) -> Peer {
+        let old_date = Local::now().sub(Duration::hours(PEER_HOURS_TIMEOUT) * 2);
+        let peer_status = PeerStatus {
+            uploaded: 0,
+            downloaded: 0,
+            left: 0,
+            event: None,
+            last_seen: old_date,
+        };
+
+        Peer::new(peer_id, "0".to_string(), 0, None, peer_status)
     }
 }

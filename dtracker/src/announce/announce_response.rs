@@ -1,4 +1,11 @@
-use std::collections::HashMap;
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
+
+use bencoder::bencode::ToBencode;
+
+use crate::{tracker_peer::peer::Peer, tracker_status::atomic_tracker_status::AtomicTrackerStatus};
 
 use super::announce_request::AnnounceRequest;
 
@@ -26,32 +33,82 @@ pub struct AnnounceResponse {
     pub tracker_id: Option<String>,
     pub complete: u32,
     pub incomplete: u32,
-    // pub peers: Vec<Peer>,
-    // pub peers_binary: Vec<u8>,
+    pub peers: Vec<Peer>,
 }
 
 impl AnnounceResponse {
     /// Creates a new AnnounceResponse from a HashMap containing the query parameters of the announce request.
-    pub fn from(query_params: HashMap<String, String>) -> Self {
-        let announce_request = AnnounceRequest::new_from(query_params);
-
-        let failure_reason = match announce_request {
-            Ok(_) => None,
-            Err(announce_request_error) => Some(announce_request_error.to_string()),
+    pub fn from(
+        query_params: HashMap<String, String>,
+        tracker_status: Arc<AtomicTrackerStatus>,
+        peer_ip: String,
+    ) -> Self {
+        let announce_request = match AnnounceRequest::new_from(query_params) {
+            Ok(announce_request) => announce_request,
+            Err(announce_request_error) => {
+                return Self::create_error_response(announce_request_error.to_string())
+            }
         };
 
-        // TODO: Create peer, notify status of a new request, build response with list of peers.
+        let peer = Peer::from_request(announce_request.clone(), peer_ip);
 
+        let (peers_list, complete, incomplete) = tracker_status.incoming_peer(
+            announce_request.info_hash,
+            peer,
+            announce_request.numwant,
+        );
+
+        // TODO: Handle announce_request.compact == true case.
+
+        Self::create_success_response(peers_list, complete, incomplete)
+    }
+
+    fn create_error_response(failure_reason: String) -> Self {
         Self {
-            failure_reason,
+            failure_reason: Some(failure_reason),
             warning_message: None,
             interval: 0,
             min_interval: None,
             tracker_id: None,
             complete: 0,
             incomplete: 0,
-            // peers: Vec::new(),
-            // peers_binary: Vec::new(),
+            peers: Vec::new(),
         }
+    }
+
+    fn create_success_response(peers_list: Vec<Peer>, complete: u32, incomplete: u32) -> Self {
+        Self {
+            failure_reason: None,
+            warning_message: None,
+            interval: 0,
+            min_interval: None,
+            tracker_id: None,
+            complete,
+            incomplete,
+            peers: peers_list,
+        }
+    }
+}
+
+impl ToBencode for AnnounceResponse {
+    fn to_bencode(&self) -> bencoder::bencode::Bencode {
+        let mut announce_response = BTreeMap::new();
+        if let Some(failure_reason) = &self.failure_reason {
+            announce_response.insert(b"failure reason".to_vec(), failure_reason.to_bencode());
+        }
+        if let Some(warning_message) = &self.warning_message {
+            announce_response.insert(b"warning message".to_vec(), warning_message.to_bencode());
+        }
+        announce_response.insert(b"interval".to_vec(), self.interval.to_bencode());
+        if let Some(min_interval) = &self.min_interval {
+            announce_response.insert(b"min interval".to_vec(), min_interval.to_bencode());
+        }
+        if let Some(tracker_id) = &self.tracker_id {
+            announce_response.insert(b"tracker id".to_vec(), tracker_id.to_bencode());
+        }
+        announce_response.insert(b"complete".to_vec(), self.complete.to_bencode());
+        announce_response.insert(b"incomplete".to_vec(), self.incomplete.to_bencode());
+        announce_response.insert(b"peers".to_vec(), self.peers.to_bencode());
+        announce_response.to_bencode()
     }
 }

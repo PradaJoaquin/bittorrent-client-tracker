@@ -45,8 +45,9 @@ impl Server {
             let stream = stream.unwrap();
             let mut request_handler = RequestHandler::new(stream);
             let logger = self.logger_sender.clone();
+            let status_clone = self.status.clone();
             self.pool.execute(move || {
-                if let Err(error) = request_handler.handle() {
+                if let Err(error) = request_handler.handle(status_clone) {
                     logger.error(&format!(
                         "An error occurred while attempting to handle a request: {:?}",
                         error

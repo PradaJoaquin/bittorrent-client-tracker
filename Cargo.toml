@@ -4,5 +4,6 @@ members = [
     "dtorrent",
     "dtracker",
     "bencoder",
-    "logger"
+    "logger",
+    "url_encoder"
 ]
