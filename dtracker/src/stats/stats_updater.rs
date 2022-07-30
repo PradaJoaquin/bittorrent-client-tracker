@@ -1,5 +1,5 @@
+use chrono::Duration;
 use std::sync::{Mutex, MutexGuard};
-use std::time::Duration;
 use std::{sync::Arc, thread::sleep};
 
 use logger::logger_sender::LoggerSender;
@@ -14,7 +14,7 @@ const MAX_DAYS_TO_KEEP_STATS: u64 = 30;
 #[derive(Debug)]
 pub struct StatsUpdater {
     stats_history: Mutex<Vec<CurrentTrackerStats>>,
-    duration: Duration,
+    duration: chrono::Duration,
     tracker_status: Arc<AtomicTrackerStatus>,
     logger_sender: Mutex<LoggerSender>,
 }
@@ -49,20 +49,37 @@ impl StatsUpdater {
 
             stats_history.push(self.tracker_status.get_global_statistics());
             self.lock_logger_sender().info("Stats updated");
-            sleep(self.duration);
+            let std_duration = match self.duration.to_std() {
+                Ok(std_duration) => std_duration,
+                Err(_) => {
+                    self.lock_logger_sender()
+                        .warn("Error converting duration to std::time::Duration");
+                    continue;
+                }
+            };
+            sleep(std_duration);
         }
     }
 
-    /// Gets the history of the stats.
+    /// Gets the history of the stats since a given time. If the is less than `since` histories, all the histories are returned.
     ///
     /// ## Returns
     /// * `Vec<CurrentTrackerStats>`: The history of the stats. The total number of torrents, seeders and leechers at a given time.
-    pub fn get_history(&self) -> Vec<CurrentTrackerStats> {
-        self.lock_stats_history().clone()
+    pub fn get_history(&self, since: chrono::Duration) -> Vec<CurrentTrackerStats> {
+        let stats_history = self.lock_stats_history();
+        let since_secs = since.num_seconds();
+        let timeout_secs = self.duration.num_seconds();
+
+        let number_of_histories_wanted = since_secs / timeout_secs;
+
+        if number_of_histories_wanted > stats_history.len() as i64 {
+            return stats_history.clone();
+        }
+        stats_history[stats_history.len() - number_of_histories_wanted as usize..].to_vec()
     }
 
     /// Gets the duration timeout of the stats.
-    pub fn get_timeout(&self) -> Duration {
+    pub fn get_timeout(&self) -> chrono::Duration {
         self.duration
     }
 

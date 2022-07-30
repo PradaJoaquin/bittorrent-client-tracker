@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::{io, thread::spawn};
 
+use chrono::Duration;
 use logger::{logger_error::LoggerError, logger_receiver::Logger, logger_sender::LoggerSender};
-use std::time::Duration;
 
 use crate::{
     http_server::server::Server, stats::stats_updater::StatsUpdater,
@@ -23,7 +23,7 @@ pub enum BtTrackerError {
     StartingServerError(io::Error),
 }
 
-const STATS_UPDATER_SECONDS_TIMEOUT: u64 = 60;
+const STATS_UPDATER_MINUTES_TIMEOUT: i64 = 1;
 
 impl BtTracker {
     /// Creates a new BtTracker
@@ -57,7 +57,7 @@ impl BtTracker {
     ) -> Arc<StatsUpdater> {
         let stats_updater = Arc::new(StatsUpdater::new(
             tracker_status,
-            Duration::from_secs(STATS_UPDATER_SECONDS_TIMEOUT),
+            Duration::minutes(STATS_UPDATER_MINUTES_TIMEOUT),
             logger_sender,
         ));
         let updater = stats_updater.clone();

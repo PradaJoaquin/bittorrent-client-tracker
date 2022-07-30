@@ -9,7 +9,7 @@ use bencoder::bencode::Bencode;
 use crate::{
     announce::announce_response::AnnounceResponse,
     http::{http_method::HttpMethod, http_parser::Http, http_status::HttpStatus},
-    stats::stats_updater::StatsUpdater,
+    stats::{stats_response::StatsResponse, stats_updater::StatsUpdater},
     tracker_status::atomic_tracker_status::AtomicTrackerStatus,
 };
 
@@ -26,6 +26,8 @@ pub enum RequestHandlerError {
     FromUtfError(std::string::FromUtf8Error),
     BadRequest,
     WritingResponseError,
+    InvalidQueryParamError,
+    InvalidStatsError,
 }
 
 impl RequestHandler {
@@ -75,7 +77,13 @@ impl RequestHandler {
                 "/announce" => {
                     self.handle_announce(http_request, tracker_status, self.get_peer_ip()?)
                 }
-                "/stats" => self.handle_stats(http_request, tracker_status, stats_updater),
+                "/stats" => match self.handle_stats(http_request, stats_updater) {
+                    Ok(response) => response,
+                    Err(_) => {
+                        self.send_bad_request()?;
+                        return Err(RequestHandlerError::BadRequest);
+                    }
+                },
                 _ => {
                     self.send_bad_request()?;
                     return Err(RequestHandlerError::InvalidEndpointError);
@@ -111,21 +119,17 @@ impl RequestHandler {
         }
     }
 
-    /// Receives a `since` param that represents the period for statistics in hours.
     fn handle_stats(
         &self,
         http_request: Http,
-        tracker_status: Arc<AtomicTrackerStatus>,
         stats_updater: Arc<StatsUpdater>,
-    ) -> Vec<u8> {
-        let since = http_request.params.get("since").unwrap();
-
-        // Obtener cantidades de peers conectados, seeders, leechers y torrents a traves del stats_updater
-
-        // Distribuir en "buckets" de a minutos / horas
-
-        // Armar string JSON
-        String::from("stats").as_bytes().to_vec()
+    ) -> Result<Vec<u8>, RequestHandlerError> {
+        let response = StatsResponse::from(http_request.params, stats_updater)
+            .map_err(|_| RequestHandlerError::InvalidStatsError)?;
+        Ok(serde_json::to_string(&response)
+            .map_err(|_| RequestHandlerError::InvalidStatsError)?
+            .as_bytes()
+            .to_vec())
     }
 
     fn create_response(mut contents: Vec<u8>, status_line: HttpStatus) -> Vec<u8> {
