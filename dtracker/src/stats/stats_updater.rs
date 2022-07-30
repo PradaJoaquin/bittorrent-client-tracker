@@ -42,21 +42,25 @@ impl StatsUpdater {
 
             // If we reached the maximum number of days to keep stats, remove the oldest one.
             let max_secs_to_keep_stats = MAX_DAYS_TO_KEEP_STATS * 24 * 60 * 60;
-            if self.duration.as_secs() * stats_history.len() as u64 > max_secs_to_keep_stats {
+            if self.duration.num_seconds() * stats_history.len() as i64
+                > max_secs_to_keep_stats as i64
+            {
                 stats_history.rotate_left(1);
                 stats_history.pop();
             }
 
             stats_history.push(self.tracker_status.get_global_statistics());
-            self.lock_logger_sender().info("Stats updated");
+            let logger = self.lock_logger_sender();
+            logger.info("Stats updated");
             let std_duration = match self.duration.to_std() {
                 Ok(std_duration) => std_duration,
                 Err(_) => {
-                    self.lock_logger_sender()
-                        .warn("Error converting duration to std::time::Duration");
+                    logger.warn("Error converting duration to std::time::Duration");
                     continue;
                 }
             };
+            // Drop lock before sleeping.
+            drop(stats_history);
             sleep(std_duration);
         }
     }
