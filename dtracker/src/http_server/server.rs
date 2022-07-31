@@ -9,7 +9,7 @@ use crate::{
     tracker_status::atomic_tracker_status::AtomicTrackerStatus,
 };
 
-/// Struct that represents the current status of the tracker.
+/// Struct that represents the HTTP Server that will listen to connections to the Tracker.
 ///
 /// ## Fields
 /// * `listener`: The TCP server binded to the socket, responsible of listening for connections.
