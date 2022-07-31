@@ -22,6 +22,7 @@ pub struct Server {
     status: Arc<AtomicTrackerStatus>,
     stats_updater: Arc<StatsUpdater>,
     logger_sender: LoggerSender,
+    port: u16,
 }
 
 impl Server {
@@ -30,20 +31,23 @@ impl Server {
         status: Arc<AtomicTrackerStatus>,
         stats_updater: Arc<StatsUpdater>,
         logger_sender: LoggerSender,
+        port: u16,
     ) -> std::io::Result<Server> {
-        let listener = TcpListener::bind("0.0.0.0:8080")?;
+        let listener = TcpListener::bind(format!("0.0.0.0:{}", port))?;
         Ok(Server {
             listener,
             pool: ThreadPool::new(1000, logger_sender.clone()),
             status,
             logger_sender,
             stats_updater,
+            port,
         })
     }
 
     /// Handles new connections to the server
     pub fn serve(&self) -> std::io::Result<()> {
-        self.logger_sender.info("Serving on http://0.0.0.0:8080");
+        self.logger_sender
+            .info(&format!("Serving on http://0.0.0.0:{}", self.port));
 
         for stream in self.listener.incoming() {
             let stream = stream?;

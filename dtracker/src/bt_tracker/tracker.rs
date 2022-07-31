@@ -27,7 +27,7 @@ const STATS_UPDATER_MINUTES_TIMEOUT: i64 = 1;
 
 impl BtTracker {
     /// Creates a new BtTracker
-    pub fn init() -> Result<Self, BtTrackerError> {
+    pub fn init(port: u16) -> Result<Self, BtTrackerError> {
         let logger = Logger::new("./logs", 1000000).map_err(BtTrackerError::LoggerInitError)?; // TODO: Sacar de configs
         let logger_sender = logger.new_sender();
 
@@ -36,7 +36,7 @@ impl BtTracker {
         let stats_updater =
             Self::spawn_stats_updater(tracker_status.clone(), logger_sender.clone());
 
-        let server = Server::init(tracker_status, stats_updater, logger_sender.clone())
+        let server = Server::init(tracker_status, stats_updater, logger_sender.clone(), port)
             .map_err(BtTrackerError::CreatingServerError)?;
 
         logger_sender.info("Tracker started");
