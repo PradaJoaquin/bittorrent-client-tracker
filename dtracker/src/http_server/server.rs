@@ -31,10 +31,10 @@ impl Server {
         stats_updater: Arc<StatsUpdater>,
         logger_sender: LoggerSender,
     ) -> std::io::Result<Server> {
-        let listener = TcpListener::bind("127.0.0.1:8080")?;
+        let listener = TcpListener::bind("0.0.0.0:8080")?;
         Ok(Server {
             listener,
-            pool: ThreadPool::new(4, logger_sender.clone()),
+            pool: ThreadPool::new(1000, logger_sender.clone()),
             status,
             logger_sender,
             stats_updater,
@@ -43,7 +43,7 @@ impl Server {
 
     /// Handles new connections to the server
     pub fn serve(&self) -> std::io::Result<()> {
-        self.logger_sender.info("Serving on http://127.0.0.1:8080");
+        self.logger_sender.info("Serving on http://0.0.0.0:8080");
 
         for stream in self.listener.incoming() {
             let stream = stream?;
@@ -51,7 +51,7 @@ impl Server {
             let logger = self.logger_sender.clone();
             let status_clone = self.status.clone();
             let stats_updater = self.stats_updater.clone();
-            self.pool.execute(move || {
+            let _ = self.pool.execute(move || {
                 if let Err(error) = request_handler.handle(status_clone, stats_updater) {
                     logger.error(&format!(
                         "An error occurred while attempting to handle a request: {:?}",

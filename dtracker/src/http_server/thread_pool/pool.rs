@@ -1,11 +1,15 @@
 use std::sync::{
-    mpsc::{channel, Sender},
+    mpsc::{self, channel, Sender},
     Arc, Mutex,
 };
 
 use logger::logger_sender::LoggerSender;
 
 use crate::http_server::thread_pool::worker::{Message, Worker};
+
+pub enum ThreadPoolError {
+    MessageSendError(mpsc::SendError<Message>),
+}
 
 /// Struct that represents a thread pool that spawns a specified number of worker threads and allows to process connections concurrently.
 /// Each idle thread in the pool is available to handle a task.
@@ -45,13 +49,17 @@ impl ThreadPool {
     }
 
     /// Receives a closure and assigns it to a thread in the pool to run.
-    pub fn execute<F>(&self, closure: F)
+    pub fn execute<F>(&self, closure: F) -> Result<(), ThreadPoolError>
     where
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(closure);
 
-        self.sender.send(Message::NewJob(job)).unwrap();
+        self.sender
+            .send(Message::NewJob(job))
+            .map_err(ThreadPoolError::MessageSendError)?;
+
+        Ok(())
     }
 }
 
@@ -61,7 +69,10 @@ impl Drop for ThreadPool {
             .info("Sending terminate message to all workers.");
 
         for _ in &self.workers {
-            self.sender.send(Message::Terminate).unwrap();
+            if self.sender.send(Message::Terminate).is_err() {
+                self.logger_sender
+                    .error("An error occurred while attempting to drop the thread pool.");
+            };
         }
 
         self.logger_sender.info("Shutting down all workers.");
@@ -70,7 +81,10 @@ impl Drop for ThreadPool {
             self.logger_sender
                 .info(format!("Shutting down worker {}", worker.id).as_str());
             if let Some(thread) = worker.thread.take() {
-                thread.join().unwrap();
+                if thread.join().is_err() {
+                    self.logger_sender
+                        .error("An error occurred while attempting to join a thread pool thread.");
+                };
             }
         }
     }

@@ -26,16 +26,17 @@ impl Worker {
         logger_sender: LoggerSender,
     ) -> Worker {
         let thread = thread::spawn(move || loop {
-            let message = receiver.lock().unwrap().recv().unwrap();
-
-            match message {
-                Message::NewJob(job) => {
-                    logger_sender.info(&format!("Worker {} got a job; executing.", id));
-                    job();
-                }
-                Message::Terminate => {
-                    logger_sender.info(&format!("Worker {} was told to terminate.", id));
-                    break;
+            while let Ok(message) = receiver.lock().unwrap().recv() {
+                // unwrap is safe because we are the only one using the Receiver.
+                match message {
+                    Message::NewJob(job) => {
+                        logger_sender.info(&format!("Worker {} got a job; executing.", id));
+                        job();
+                    }
+                    Message::Terminate => {
+                        logger_sender.info(&format!("Worker {} was told to terminate.", id));
+                        break;
+                    }
                 }
             }
         });
