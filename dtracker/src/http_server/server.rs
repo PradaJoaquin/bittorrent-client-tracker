@@ -46,8 +46,9 @@ impl Server {
 
     /// Handles new connections to the server
     pub fn serve(&self) -> std::io::Result<()> {
-        self.logger_sender
-            .info(&format!("Serving on http://0.0.0.0:{}", self.port));
+        let started_msg = format!("Serving on http://0.0.0.0:{}", self.port);
+        self.logger_sender.info(&started_msg);
+        println!("{}", started_msg);
 
         for stream in self.listener.incoming() {
             let stream = stream?;

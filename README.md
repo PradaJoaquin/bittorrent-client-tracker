@@ -1,40 +1,22 @@
-<p align="center">
-<img src="./docs/logo.png" height="150">
-</p>
-
 <h1 align="center">
-dTorrent
+BitTorrent client & tracker
 </h1>
 <p align="center">
-A BitTorrent client made in Rust.
-<p>
-<p align="center">
-  <a href="https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/actions/workflows/ci.yaml"><img src="https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+Written in Rust.
 <p>
 
-## Requirements
+This repository contains the development of a bittorrent client and a tracker.
 
-To build the program it needs:
+Click the logo to go to the specific project:
 
-- [Rust](https://www.rust-lang.org/) (and cargo)
-- [gtk3](https://gtk.org/) (for the UI)
+## dTorrent
 
-## Running
+<a href="https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/tree/main/dtorrent">
+<img src="./docs/logo_dtorrent.png" height="50">
+</a>
 
-To run the program there needs to be a `config.cfg` file in the root of the project. We provide one with default values as an example.
+## dTracker
 
-Then run the program with `cargo` followed by the directory containing the .torrent files:
-
-```bash
-$ cargo run ./torrents
-```
-
-On startup the client gets all the .torrent files on the specified directory and immediately starts the download & upload.
-
-## Tests
-
-Run tests with `cargo`:
-
-```bash
-$ cargo test
-```
+<a href="https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/tree/main/dtracker">
+<img src="./docs/logo_dtracker.png" height="50">
+</a>
