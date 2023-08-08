@@ -11,12 +11,12 @@ Click the logo to go to the specific project:
 
 ## dTorrent
 
-<a href="https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/tree/main/dtorrent">
+<a href="https://github.com/PradaJoaquin/bittorrent-client/tree/main/dtorrent">
 <img src="./docs/logo_dtorrent.png" height="50">
 </a>
 
 ## dTracker
 
-<a href="https://github.com/taller-1-fiuba-rust/22C1-La-Deymoneta/tree/main/dtracker">
+<a href="https://github.com/PradaJoaquin/bittorrent-client/tree/main/dtracker">
 <img src="./docs/logo_dtracker.png" height="50">
 </a>
