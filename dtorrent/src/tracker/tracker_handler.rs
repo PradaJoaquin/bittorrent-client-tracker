@@ -90,6 +90,7 @@ mod tests {
 
     use super::*;
 
+    #[ignore = "Test uses a real tracker"]
     #[test]
     fn test_get_peers_list() {
         let torrent = create_test_torrent(
@@ -104,6 +105,7 @@ mod tests {
         assert!(!tracker_handler.get_peers_list().unwrap().peers.is_empty());
     }
 
+    #[ignore = "Test uses a real tracker"]
     #[test]
     fn test_http_request() {
         let torrent = create_test_torrent(

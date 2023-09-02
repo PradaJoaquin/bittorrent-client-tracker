@@ -159,6 +159,7 @@ mod tests {
 
     use super::*;
 
+    #[ignore = "Test uses a real tracker"]
     #[test]
     fn test_http_handler_https_request() {
         let http_handler = HttpHandler::new(
@@ -176,6 +177,7 @@ mod tests {
         assert!(response.starts_with(&[100, 56, 58, 99, 111, 109, 112, 108, 101, 116, 101]));
     }
 
+    #[ignore = "Test uses a real tracker"]
     #[test]
     fn test_bad_http_handler_https_request() {
         let http_handler = HttpHandler::new(
@@ -193,6 +195,7 @@ mod tests {
         assert!(response.starts_with(&[100, 49, 52, 58, 102, 97, 105, 108, 117, 114, 101]));
     }
 
+    #[ignore = "Test uses a real tracker"]
     #[test]
     fn test_http_handler_http_request() {
         let http_handler = HttpHandler::new(
@@ -210,6 +213,7 @@ mod tests {
         assert!(response.starts_with(&[100, 56, 58, 99, 111, 109, 112, 108, 101, 116, 101]));
     }
 
+    #[ignore = "Test uses a real tracker"]
     #[test]
     fn test_bad_http_handler_http_request() {
         let http_handler = HttpHandler::new(

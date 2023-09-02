@@ -52,7 +52,7 @@ impl TorrentStats {
     ) -> Result<String, AtomicTorrentStatusError> {
         let down_speed = torrent_status.torrent_download_speed()? / 8_f64;
         let remaining_bytes =
-            torrent_status.remaining_pieces() as u32 * torrent_status.torrent.piece_length();
+            torrent_status.remaining_pieces() as u64 * torrent_status.torrent.piece_length() as u64;
 
         let remaining_kb = remaining_bytes / 1024;
 
