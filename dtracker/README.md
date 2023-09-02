@@ -14,6 +14,10 @@ A BitTorrent tracker made in Rust.
 To build the program it needs:
 
 - [Rust](https://www.rust-lang.org/) (and cargo)
+    - It can be installed with:
+      ```bash
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+      ```
 
 ## Running
 
