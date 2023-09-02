@@ -126,15 +126,13 @@ impl Cfg {
     {
         let parse = value.parse::<F>();
         match parse {
-            Err(_) => {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!(
-                        "Invalid setting: {}, is not a valid type: {}",
-                        setting, value
-                    ),
-                ))
-            }
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid setting: {}, is not a valid type: {}",
+                    setting, value
+                ),
+            )),
             Ok(parse) => Ok(parse),
         }
     }
@@ -288,10 +286,7 @@ mod tests {
             .unwrap_or_else(|_| panic!("Error writing file in path: {}", &path));
     }
 
-    fn create_and_assert_config_is_ok(
-        path: &str,
-        good_config: Cfg,
-    ) {
+    fn create_and_assert_config_is_ok(path: &str, good_config: Cfg) {
         let config = Cfg::new(path);
 
         assert!(config.is_ok());
@@ -302,9 +297,18 @@ mod tests {
         assert_eq!(config.log_directory, good_config.log_directory);
         assert_eq!(config.download_directory, good_config.download_directory);
         assert_eq!(config.pipelining_size, good_config.pipelining_size);
-        assert_eq!(config.read_write_seconds_timeout, good_config.read_write_seconds_timeout);
-        assert_eq!(config.max_peers_per_torrent, good_config.max_peers_per_torrent);
-        assert_eq!(config.max_log_file_kb_size, good_config.max_log_file_kb_size);
+        assert_eq!(
+            config.read_write_seconds_timeout,
+            good_config.read_write_seconds_timeout
+        );
+        assert_eq!(
+            config.max_peers_per_torrent,
+            good_config.max_peers_per_torrent
+        );
+        assert_eq!(
+            config.max_log_file_kb_size,
+            good_config.max_log_file_kb_size
+        );
 
         fs::remove_file(path).unwrap_or_else(|_| panic!("Error removing file in path: {}", &path));
     }

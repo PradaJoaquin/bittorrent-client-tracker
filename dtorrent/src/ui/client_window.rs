@@ -1,10 +1,10 @@
-use std::rc::Rc;
 use super::client_window_data::ClientWindowData;
 use super::setup::UserInterfaceError;
 use crate::statistics::torrent_stats::TorrentStats;
 use gtk::glib::Receiver;
 use gtk::prelude::*;
 use gtk::{glib, Window};
+use std::rc::Rc;
 
 pub struct ClientWindow {
     window: Window,
