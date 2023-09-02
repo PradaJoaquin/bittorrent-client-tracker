@@ -69,12 +69,12 @@ impl LoggerSender {
     fn format_msg(&self, value: &str, log_type: &str) -> String {
         let time = Local::now();
         let time_formated = time.format("[%Y/%m/%d %H:%M:%S]");
-        return format!(
+        format!(
             "[{}] [{}] [{}] - {}\n",
             time_formated,
             self.get_thread_name(),
             log_type,
             value
-        );
+        )
     }
 }
