@@ -28,7 +28,7 @@ impl Http {
 
         let mut line_split = line.split(|&b| b == b' ');
         let method = HttpMethod::from_str(
-            &String::from_utf8_lossy(line_split.next().ok_or(HttpError::ParseError)?).to_string(),
+            String::from_utf8_lossy(line_split.next().ok_or(HttpError::ParseError)?).as_ref(),
         )
         .map_err(|_| HttpError::HttpMethodNotSupported)?;
 

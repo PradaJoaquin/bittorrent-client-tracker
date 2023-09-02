@@ -1,5 +1,4 @@
-use std::sync::Arc;
-
+use std::rc::Rc;
 use super::client_window_data::ClientWindowData;
 use super::setup::UserInterfaceError;
 use crate::statistics::torrent_stats::TorrentStats;
@@ -9,7 +8,7 @@ use gtk::{glib, Window};
 
 pub struct ClientWindow {
     window: Window,
-    window_data: Arc<ClientWindowData>,
+    window_data: Rc<ClientWindowData>,
     builder: gtk::Builder,
 }
 
@@ -26,7 +25,7 @@ impl ClientWindow {
             .set_icon_from_file("./dtorrent/src/ui/logo.ico")
             .unwrap();
 
-        let window_data = Arc::new(ClientWindowData::new(&builder)?);
+        let window_data = Rc::new(ClientWindowData::new(&builder)?);
         let window_data_clone = window_data.clone();
         receiver.attach(None, move |statistics: Vec<TorrentStats>| {
             window_data_clone.update_statistics(statistics);

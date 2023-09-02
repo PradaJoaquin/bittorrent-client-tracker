@@ -222,7 +222,7 @@ impl PeerSession {
     fn set_up_peer_session(&mut self) -> Result<TcpStream, PeerSessionError> {
         let peer_socket = format!("{}:{}", self.peer.ip, self.peer.port);
 
-        let mut stream = TcpStream::connect(&peer_socket)
+        let mut stream = TcpStream::connect(peer_socket)
             .map_err(|_| PeerSessionError::CouldNotConnectToPeer)?;
 
         self.set_stream_timeouts(&mut stream)?;
@@ -550,7 +550,7 @@ impl PeerSession {
             MessageId::Request => self.handle_request(message, stream)?,
             MessageId::Have => {
                 let index = self.message_handler.handle_have(message);
-                self.bitfield.set_bit(index as u32, true);
+                self.bitfield.set_bit(index, true);
             }
             _ => {} // TODO: handle other messages,
         }

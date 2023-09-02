@@ -194,7 +194,7 @@ mod tests {
             let reader = BufReader::new(log);
 
             let mut counter = 0;
-            for line in reader.lines() {
+            for (_, line) in reader.lines().enumerate() {
                 let current_line = line.unwrap();
 
                 assert!(current_line.contains(logging[counter]));
@@ -225,7 +225,7 @@ mod tests {
             let reader = BufReader::new(log);
 
             let mut counter = 0;
-            for line in reader.lines() {
+            for (_, line) in reader.lines().enumerate() {
                 let current_line = line.unwrap();
 
                 assert!(current_line.contains(logging[counter]));

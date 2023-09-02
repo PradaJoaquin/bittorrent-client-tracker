@@ -127,13 +127,13 @@ impl Cfg {
         let parse = value.parse::<F>();
         match parse {
             Err(_) => {
-                return Err(io::Error::new(
+                Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
                         "Invalid setting: {}, is not a valid type: {}",
                         setting, value
                     ),
-                ));
+                ))
             }
             Ok(parse) => Ok(parse),
         }
@@ -161,7 +161,16 @@ mod tests {
         let contents = b"TCP_PORT=1000\nLOG_DIRECTORY=./log\nDOWNLOAD_DIRECTORY=./download\nPIPELINING_SIZE=5\nREAD_WRITE_SECONDS_TIMEOUT=120\nMAX_PEERS_PER_TORRENT=5\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
-        create_and_assert_config_is_ok(path, 1000, "./log", "./download", 5, 120, 5, 100);
+        let good_config = Cfg {
+            tcp_port: 1000,
+            log_directory: String::from("./log"),
+            download_directory: String::from("./download"),
+            pipelining_size: 5,
+            read_write_seconds_timeout: 120,
+            max_peers_per_torrent: 5,
+            max_log_file_kb_size: 100,
+        };
+        create_and_assert_config_is_ok(path, good_config);
     }
 
     #[test]
@@ -249,7 +258,16 @@ mod tests {
         let contents = b"LOG_DIRECTORY=./log2\nDOWNLOAD_DIRECTORY=./download2\nTCP_PORT=2500\nREAD_WRITE_SECONDS_TIMEOUT=10\nMAX_PEERS_PER_TORRENT=1\nPIPELINING_SIZE=10\nMAX_LOG_FILE_KB_SIZE=100";
         create_and_write_file(path, contents);
 
-        create_and_assert_config_is_ok(path, 2500, "./log2", "./download2", 10, 10, 1, 100);
+        let good_config = Cfg {
+            tcp_port: 2500,
+            log_directory: String::from("./log2"),
+            download_directory: String::from("./download2"),
+            pipelining_size: 10,
+            read_write_seconds_timeout: 10,
+            max_peers_per_torrent: 1,
+            max_log_file_kb_size: 100,
+        };
+        create_and_assert_config_is_ok(path, good_config);
     }
 
     #[test]
@@ -263,43 +281,37 @@ mod tests {
 
     // Auxiliary functions
 
-    fn create_and_write_file(path: &str, contents: &[u8]) -> () {
+    fn create_and_write_file(path: &str, contents: &[u8]) {
         let mut file =
-            File::create(path).expect(&format!("Error creating file in path: {}", &path));
+            File::create(path).unwrap_or_else(|_| panic!("Error creating file in path: {}", &path));
         file.write_all(contents)
-            .expect(&format!("Error writing file in path: {}", &path));
+            .unwrap_or_else(|_| panic!("Error writing file in path: {}", &path));
     }
 
     fn create_and_assert_config_is_ok(
         path: &str,
-        tcp_port: u16,
-        log_directory: &str,
-        download_directory: &str,
-        pipelining_size: u32,
-        read_write_timeout: u64,
-        max_peers_per_torrent: u32,
-        max_log_file_size: u32,
+        good_config: Cfg,
     ) {
         let config = Cfg::new(path);
 
         assert!(config.is_ok());
 
-        let config = config.expect(&format!("Error creating config in path: {}", &path));
+        let config = config.unwrap_or_else(|_| panic!("Error creating config in path: {}", &path));
 
-        assert_eq!(config.tcp_port, tcp_port);
-        assert_eq!(config.log_directory, log_directory);
-        assert_eq!(config.download_directory, download_directory);
-        assert_eq!(config.pipelining_size, pipelining_size);
-        assert_eq!(config.read_write_seconds_timeout, read_write_timeout);
-        assert_eq!(config.max_peers_per_torrent, max_peers_per_torrent);
-        assert_eq!(config.max_log_file_kb_size, max_log_file_size);
+        assert_eq!(config.tcp_port, good_config.tcp_port);
+        assert_eq!(config.log_directory, good_config.log_directory);
+        assert_eq!(config.download_directory, good_config.download_directory);
+        assert_eq!(config.pipelining_size, good_config.pipelining_size);
+        assert_eq!(config.read_write_seconds_timeout, good_config.read_write_seconds_timeout);
+        assert_eq!(config.max_peers_per_torrent, good_config.max_peers_per_torrent);
+        assert_eq!(config.max_log_file_kb_size, good_config.max_log_file_kb_size);
 
-        fs::remove_file(path).expect(&format!("Error removing file in path: {}", &path));
+        fs::remove_file(path).unwrap_or_else(|_| panic!("Error removing file in path: {}", &path));
     }
 
     fn create_and_assert_config_is_not_ok(path: &str) {
         let config = Cfg::new(path);
         assert!(config.is_err());
-        fs::remove_file(path).expect(&format!("Error removing file in path: {}", &path));
+        fs::remove_file(path).unwrap_or_else(|_| panic!("Error removing file in path: {}", &path));
     }
 }

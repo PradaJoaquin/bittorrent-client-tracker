@@ -80,7 +80,7 @@ impl AtomicTorrentStatus {
         let total_pieces = torrent.total_pieces();
 
         for index in 0..total_pieces {
-            pieces_status.insert(index as u32, PieceStatus::Free);
+            pieces_status.insert(index, PieceStatus::Free);
         }
 
         (
@@ -784,7 +784,7 @@ mod tests {
     fn create_test_peer(ip: String) -> BtPeer {
         BtPeer {
             peer_id: Some(vec![0x00]),
-            ip: ip,
+            ip,
             port: 0,
             info_hash: None,
         }
@@ -795,7 +795,7 @@ mod tests {
     }
 
     fn create_status_whitout_receiver(torrent: &Torrent, config: Cfg) -> AtomicTorrentStatus {
-        let (status, _) = AtomicTorrentStatus::new(&torrent, config);
+        let (status, _) = AtomicTorrentStatus::new(torrent, config);
         status
     }
 }

@@ -68,7 +68,7 @@ impl Peer {
     /// Returns `true` if the given peer is acting as a leecher, `false` on the contrary.
     pub fn is_leecher(&self) -> bool {
         self.status.left > 0
-            || (self.status.event != Some(PeerEvent::Completed) && self.status.event != None)
+            || (self.status.event != Some(PeerEvent::Completed) && self.status.event.is_some())
     }
     /// Returns `true` if the given peer is acting as a seeder, `false` on the contrary.
     pub fn is_seeder(&self) -> bool {

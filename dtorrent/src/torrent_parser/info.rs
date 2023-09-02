@@ -56,7 +56,7 @@ impl Info {
 
     fn create_name(bencode: &Bencode) -> Result<String, FromInfoError> {
         let c = match bencode {
-            &Bencode::BString(ref s) => s,
+            Bencode::BString(s) => s,
             _ => return Err(FromInfoError::MissingName),
         };
 
@@ -70,7 +70,7 @@ impl Info {
 
     fn create_length(bencode: &Bencode) -> Result<i64, FromInfoError> {
         let c = match bencode {
-            &Bencode::BNumber(ref s) => s,
+            Bencode::BNumber(s) => s,
             _ => return Err(FromInfoError::MissingLength),
         };
         Ok(*c)
@@ -78,7 +78,7 @@ impl Info {
 
     fn create_piece_length(bencode: &Bencode) -> Result<i64, FromInfoError> {
         let c = match bencode {
-            &Bencode::BNumber(ref s) => s,
+            Bencode::BNumber(s) => s,
             _ => return Err(FromInfoError::MissingPieceLength),
         };
         Ok(*c)
@@ -86,7 +86,7 @@ impl Info {
 
     fn create_pieces(bencode: &Bencode) -> Result<Vec<u8>, FromInfoError> {
         let c = match bencode {
-            &Bencode::BString(ref s) => s,
+            Bencode::BString(s) => s,
             _ => return Err(FromInfoError::MissingPieces),
         };
         Ok(c.to_vec())

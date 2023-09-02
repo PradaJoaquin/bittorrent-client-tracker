@@ -11,6 +11,7 @@ use std::sync::{
     Mutex,
 };
 
+#[derive(Debug)]
 pub struct ClientWindowData {
     torrents_liststore: ListStore,
     peers_liststore: ListStore,
